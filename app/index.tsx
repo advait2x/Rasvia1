@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -25,12 +25,18 @@ import { RestaurantListCard } from "@/components/RestaurantListCard";
 import { FilterBar } from "@/components/FilterBar";
 import { FloatingQRButton } from "@/components/FloatingQRButton";
 import { restaurants, type FilterType } from "@/data/mockData";
+import { testSupabaseConnection } from "@/lib/test-supabase";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function DiscoveryFeed() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
+
+  // Test Supabase connection on mount
+  useEffect(() => {
+    testSupabaseConnection();
+  }, []);
 
   const filteredRestaurants = restaurants.filter((r) => {
     if (activeFilter === "all") return true;

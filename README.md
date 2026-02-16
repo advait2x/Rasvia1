@@ -10,7 +10,18 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
-2. Start the app
+2. Set up Supabase
+
+   Create a `.env` file in the root directory with your Supabase credentials:
+
+   ```env
+   EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
+
+   > **Note:** The `.env` file is already in `.gitignore` to protect your credentials.
+
+3. Start the app
 
    ```bash
     npx expo start
