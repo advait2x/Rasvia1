@@ -1,0 +1,168 @@
+import React from "react";
+import { View, Text, Pressable, Image, Dimensions } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { WaitBadge } from "@/components/WaitBadge";
+import { Star, MapPin } from "lucide-react-native";
+import type { Restaurant } from "@/data/mockData";
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const CARD_WIDTH = SCREEN_WIDTH - 48;
+
+interface HeroCardProps {
+  restaurant: Restaurant;
+  index: number;
+  onPress: () => void;
+}
+
+export function HeroCard({ restaurant, index, onPress }: HeroCardProps) {
+  const pressScale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pressScale.value }],
+  }));
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(index * 100).duration(600)}
+      style={[animatedStyle, { width: CARD_WIDTH, marginRight: 16 }]}
+    >
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => {
+          pressScale.value = withSpring(0.95);
+        }}
+        onPressOut={() => {
+          pressScale.value = withSpring(1);
+        }}
+        className="rounded-2xl overflow-hidden"
+        style={{ height: 420, borderWidth: 1, borderColor: "#2a2a2a" }}
+      >
+        <Image
+          source={{ uri: restaurant.image }}
+          style={{ width: "100%", height: "100%", position: "absolute" }}
+          resizeMode="cover"
+        />
+        <LinearGradient
+          colors={["transparent", "rgba(15,15,15,0.6)", "rgba(15,15,15,0.95)"]}
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: "70%",
+          }}
+        />
+
+        {/* Wait Badge */}
+        <View className="absolute top-4 right-4">
+          <WaitBadge
+            waitTime={restaurant.waitTime}
+            status={restaurant.waitStatus}
+            size="md"
+          />
+        </View>
+
+        {/* Content */}
+        <View className="absolute bottom-0 left-0 right-0 p-5">
+          <View className="flex-row items-center mb-1">
+            {restaurant.tags.slice(0, 2).map((tag, i) => (
+              <View
+                key={tag}
+                className="bg-rasvia-saffron/20 rounded-full px-2.5 py-0.5 mr-2"
+              >
+                <Text
+                  style={{
+                    fontFamily: "Manrope_600SemiBold",
+                    color: "#FF9933",
+                    fontSize: 11,
+                  }}
+                >
+                  {tag}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          <Text
+            style={{
+              fontFamily: "BricolageGrotesque_800ExtraBold",
+              color: "#f5f5f5",
+              fontSize: 36,
+              lineHeight: 40,
+              marginBottom: 4,
+              letterSpacing: -0.5,
+            }}
+            numberOfLines={1}
+          >
+            {restaurant.name}
+          </Text>
+
+          <Text
+            style={{
+              fontFamily: "Manrope_500Medium",
+              color: "#999999",
+              fontSize: 15,
+              marginBottom: 10,
+            }}
+          >
+            {restaurant.cuisine}
+          </Text>
+
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center">
+              <Star size={14} color="#FF9933" fill="#FF9933" />
+              <Text
+                style={{
+                  fontFamily: "Manrope_700Bold",
+                  color: "#f5f5f5",
+                  fontSize: 14,
+                  marginLeft: 4,
+                }}
+              >
+                {restaurant.rating}
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "Manrope_500Medium",
+                  color: "#999999",
+                  fontSize: 13,
+                  marginLeft: 4,
+                }}
+              >
+                ({restaurant.reviewCount.toLocaleString()})
+              </Text>
+            </View>
+            <View className="flex-row items-center">
+              <MapPin size={13} color="#999999" />
+              <Text
+                style={{
+                  fontFamily: "Manrope_500Medium",
+                  color: "#999999",
+                  fontSize: 13,
+                  marginLeft: 4,
+                }}
+              >
+                {restaurant.distance}
+              </Text>
+            </View>
+            <Text
+              style={{
+                fontFamily: "JetBrainsMono_600SemiBold",
+                color: "#FF9933",
+                fontSize: 14,
+              }}
+            >
+              {restaurant.priceRange}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}

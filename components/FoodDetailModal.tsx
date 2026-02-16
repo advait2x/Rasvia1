@@ -1,0 +1,220 @@
+import React from "react";
+import { View, Text, Pressable, Image, Dimensions, Platform } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { X, Plus, Leaf, Flame, Play } from "lucide-react-native";
+import type { MenuItem } from "@/data/mockData";
+import Animated, { FadeIn, SlideInDown } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+interface FoodDetailModalProps {
+  item: MenuItem;
+  onClose: () => void;
+  onAddToCart: () => void;
+}
+
+export function FoodDetailModal({
+  item,
+  onClose,
+  onAddToCart,
+}: FoodDetailModalProps) {
+  return (
+    <Animated.View
+      entering={FadeIn.duration(300)}
+      className="absolute inset-0"
+      style={{
+        backgroundColor: "rgba(0,0,0,0.85)",
+        zIndex: 100,
+      }}
+    >
+      <Animated.View
+        entering={SlideInDown.duration(500).springify()}
+        className="flex-1 justify-end"
+      >
+        <View
+          className="bg-rasvia-dark rounded-t-3xl overflow-hidden"
+          style={{ maxHeight: SCREEN_HEIGHT * 0.88 }}
+        >
+          {/* Image Section with Video Placeholder */}
+          <View style={{ height: SCREEN_HEIGHT * 0.45, position: "relative" }}>
+            <Image
+              source={{ uri: item.image }}
+              style={{ width: "100%", height: "100%" }}
+              resizeMode="cover"
+            />
+            <LinearGradient
+              colors={["rgba(26,26,26,0.3)", "transparent", "rgba(26,26,26,0.95)"]}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+              }}
+            />
+
+            {/* Video Play Indicator */}
+            <View
+              className="absolute items-center justify-center"
+              style={{
+                top: "40%",
+                left: "50%",
+                marginLeft: -30,
+                marginTop: -30,
+                width: 60,
+                height: 60,
+                borderRadius: 30,
+                backgroundColor: "rgba(255, 153, 51, 0.8)",
+              }}
+            >
+              <Play size={24} color="#0f0f0f" fill="#0f0f0f" />
+            </View>
+
+            {/* Close button */}
+            <Pressable
+              onPress={onClose}
+              className="absolute top-4 right-4"
+              style={{
+                backgroundColor: "rgba(15, 15, 15, 0.6)",
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <X size={20} color="#f5f5f5" />
+            </Pressable>
+
+            {/* Badges */}
+            <View className="absolute bottom-4 left-5 flex-row items-center">
+              {item.isVegetarian && (
+                <View
+                  className="flex-row items-center mr-2 px-2.5 py-1 rounded-full"
+                  style={{ backgroundColor: "rgba(34, 197, 94, 0.2)" }}
+                >
+                  <Leaf size={12} color="#22C55E" />
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_600SemiBold",
+                      color: "#22C55E",
+                      fontSize: 11,
+                      marginLeft: 4,
+                    }}
+                  >
+                    Vegetarian
+                  </Text>
+                </View>
+              )}
+              {item.spiceLevel > 0 && (
+                <View
+                  className="flex-row items-center px-2.5 py-1 rounded-full"
+                  style={{ backgroundColor: "rgba(239, 68, 68, 0.2)" }}
+                >
+                  {Array.from({ length: item.spiceLevel }).map((_, i) => (
+                    <Flame
+                      key={i}
+                      size={12}
+                      color="#EF4444"
+                      fill="#EF4444"
+                      style={{ marginRight: 2 }}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Content */}
+          <View className="px-5 pt-5 pb-4">
+            <View className="flex-row items-start justify-between mb-2">
+              <View className="flex-1 mr-4">
+                <Text
+                  style={{
+                    fontFamily: "BricolageGrotesque_800ExtraBold",
+                    color: "#f5f5f5",
+                    fontSize: 32,
+                    lineHeight: 36,
+                    letterSpacing: -0.5,
+                  }}
+                >
+                  {item.name}
+                </Text>
+              </View>
+              <Text
+                style={{
+                  fontFamily: "JetBrainsMono_600SemiBold",
+                  color: "#FF9933",
+                  fontSize: 24,
+                }}
+              >
+                ${item.price.toFixed(2)}
+              </Text>
+            </View>
+
+            <Text
+              style={{
+                fontFamily: "Manrope_500Medium",
+                color: "#999999",
+                fontSize: 15,
+                lineHeight: 22,
+                marginBottom: 6,
+              }}
+            >
+              {item.description}
+            </Text>
+
+            <View
+              className="self-start px-3 py-1 rounded-full mb-6"
+              style={{ backgroundColor: "#2a2a2a" }}
+            >
+              <Text
+                style={{
+                  fontFamily: "Manrope_600SemiBold",
+                  color: "#999999",
+                  fontSize: 12,
+                }}
+              >
+                {item.category}
+              </Text>
+            </View>
+          </View>
+
+          {/* Add to Cart */}
+          <View className="px-5 pb-10">
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+                onAddToCart();
+              }}
+              className="rounded-2xl py-4 flex-row items-center justify-center"
+              style={{
+                backgroundColor: "#FF9933",
+                shadowColor: "#FF9933",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 12,
+                elevation: 8,
+              }}
+            >
+              <Plus size={20} color="#0f0f0f" strokeWidth={3} />
+              <Text
+                style={{
+                  fontFamily: "BricolageGrotesque_700Bold",
+                  color: "#0f0f0f",
+                  fontSize: 17,
+                  marginLeft: 8,
+                }}
+              >
+                Add to Cart — ${item.price.toFixed(2)}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Animated.View>
+    </Animated.View>
+  );
+}
