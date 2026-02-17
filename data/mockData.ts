@@ -2,6 +2,7 @@ export interface Restaurant {
   id: string;
   name: string;
   cuisine: string;
+  cuisineCategory: string;
   rating: number;
   reviewCount: number;
   distance: string;
@@ -52,6 +53,7 @@ export const restaurants: Restaurant[] = [
     id: "1",
     name: "Saffron Palace",
     cuisine: "North Indian • Mughlai",
+    cuisineCategory: "North Indian",
     rating: 4.8,
     reviewCount: 2847,
     distance: "0.3 mi",
@@ -70,6 +72,7 @@ export const restaurants: Restaurant[] = [
     id: "2",
     name: "Bombay Social",
     cuisine: "Street Food • Fusion",
+    cuisineCategory: "North Indian",
     rating: 4.6,
     reviewCount: 1923,
     distance: "0.5 mi",
@@ -88,6 +91,7 @@ export const restaurants: Restaurant[] = [
     id: "3",
     name: "Dosa Republic",
     cuisine: "South Indian • Vegetarian",
+    cuisineCategory: "South Indian",
     rating: 4.9,
     reviewCount: 3201,
     distance: "0.8 mi",
@@ -106,6 +110,7 @@ export const restaurants: Restaurant[] = [
     id: "4",
     name: "Chai & Charcoal",
     cuisine: "Pakistani • BBQ",
+    cuisineCategory: "Pakistani",
     rating: 4.7,
     reviewCount: 1567,
     distance: "1.2 mi",
@@ -124,6 +129,7 @@ export const restaurants: Restaurant[] = [
     id: "5",
     name: "Lanka Spice House",
     cuisine: "Sri Lankan • Seafood",
+    cuisineCategory: "Sri Lankan",
     rating: 4.5,
     reviewCount: 987,
     distance: "1.5 mi",
@@ -142,6 +148,7 @@ export const restaurants: Restaurant[] = [
     id: "6",
     name: "Naan & Beyond",
     cuisine: "Indo-Chinese • Bar",
+    cuisineCategory: "Indo-Chinese",
     rating: 4.4,
     reviewCount: 1345,
     distance: "0.7 mi",

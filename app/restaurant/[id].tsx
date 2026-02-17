@@ -2,7 +2,6 @@ import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
-  ScrollView,
   Image,
   Pressable,
   Dimensions,
@@ -23,12 +22,12 @@ import {
   ShoppingBag,
 } from "lucide-react-native";
 import Animated, {
-  FadeIn,
-  FadeInDown,
-  FadeInUp,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  useAnimatedScrollHandler,
+  interpolate,
+  Extrapolation,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { WaitBadge } from "@/components/WaitBadge";
@@ -44,6 +43,9 @@ import {
 } from "@/data/mockData";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const HERO_HEIGHT = SCREEN_HEIGHT * 0.42;
+const COLLAPSED_HEADER_HEIGHT = 100;
+const SCROLL_THRESHOLD = HERO_HEIGHT;
 
 export default function RestaurantDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -55,6 +57,74 @@ export default function RestaurantDetail() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
+
+  const scrollY = useSharedValue(0);
+
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  // Hero: fixed height container, image parallaxes up inside
+  const heroInnerStyle = useAnimatedStyle(() => {
+    const translateY = interpolate(
+      scrollY.value,
+      [0, SCROLL_THRESHOLD],
+      [0, -SCROLL_THRESHOLD * 0.5],
+      Extrapolation.CLAMP,
+    );
+    const opacity = interpolate(
+      scrollY.value,
+      [0, SCROLL_THRESHOLD * 0.6],
+      [1, 0],
+      Extrapolation.CLAMP,
+    );
+    return {
+      transform: [{ translateY }],
+      opacity,
+    };
+  });
+
+  // Collapsed header fades in
+  const collapsedHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      scrollY.value,
+      [SCROLL_THRESHOLD * 0.7, SCROLL_THRESHOLD],
+      [0, 1],
+      Extrapolation.CLAMP,
+    );
+    const translateY = interpolate(
+      scrollY.value,
+      [SCROLL_THRESHOLD * 0.7, SCROLL_THRESHOLD],
+      [-10, 0],
+      Extrapolation.CLAMP,
+    );
+    return {
+      opacity,
+      transform: [{ translateY }],
+    };
+  });
+
+  // Hero content (name/tags) fades out on scroll
+  const heroContentStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      scrollY.value,
+      [0, SCROLL_THRESHOLD * 0.4],
+      [1, 0],
+      Extrapolation.CLAMP,
+    );
+    const translateY = interpolate(
+      scrollY.value,
+      [0, SCROLL_THRESHOLD * 0.4],
+      [0, -20],
+      Extrapolation.CLAMP,
+    );
+    return {
+      opacity,
+      transform: [{ translateY }],
+    };
+  });
 
   const handleAddToCart = useCallback(
     (item: MenuItem) => {
@@ -109,7 +179,6 @@ export default function RestaurantDetail() {
     setIsFavorited((prev) => !prev);
   }, []);
 
-  // Split menu into two columns for masonry layout
   const leftColumn = menuItems.filter((_, i) => i % 2 === 0);
   const rightColumn = menuItems.filter((_, i) => i % 2 !== 0);
 
@@ -120,136 +189,273 @@ export default function RestaurantDetail() {
 
   return (
     <View className="flex-1 bg-rasvia-black">
-      {/* Hero Image */}
-      <View style={{ height: SCREEN_HEIGHT * 0.42, position: "relative" }}>
-        <Image
-          source={{ uri: restaurant.image }}
-          style={{ width: "100%", height: "100%" }}
-          resizeMode="cover"
-        />
-        <LinearGradient
-          colors={[
-            "rgba(15,15,15,0.5)",
-            "transparent",
-            "rgba(15,15,15,0.7)",
-            "rgba(15,15,15,1)",
-          ]}
-          locations={[0, 0.3, 0.7, 1]}
-          style={{
+      {/* Collapsed Sticky Header */}
+      <Animated.View
+        style={[
+          collapsedHeaderStyle,
+          {
             position: "absolute",
             top: 0,
             left: 0,
             right: 0,
-            bottom: 0,
-          }}
-        />
-
-        {/* Top Nav */}
-        <SafeAreaView edges={["top"]} className="absolute top-0 left-0 right-0">
-          <View className="flex-row items-center justify-between px-5 pt-2">
+            zIndex: 100,
+            backgroundColor: "rgba(15, 15, 15, 0.97)",
+            borderBottomWidth: 1,
+            borderBottomColor: "#222222",
+          },
+        ]}
+      >
+        <SafeAreaView edges={["top"]}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+            }}
+          >
             <Pressable
               onPress={() => router.back()}
               style={{
-                backgroundColor: "rgba(15, 15, 15, 0.6)",
-                width: 44,
-                height: 44,
-                borderRadius: 22,
+                width: 38,
+                height: 38,
+                borderRadius: 19,
                 alignItems: "center",
                 justifyContent: "center",
+                backgroundColor: "#1a1a1a",
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.08)",
+                borderColor: "#2a2a2a",
               }}
             >
-              <ArrowLeft size={22} color="#f5f5f5" />
+              <ArrowLeft size={20} color="#f5f5f5" />
             </Pressable>
-            <View className="flex-row">
+
+            <Image
+              source={{ uri: restaurant.image }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                marginLeft: 12,
+                borderWidth: 1,
+                borderColor: "#2a2a2a",
+              }}
+              resizeMode="cover"
+            />
+
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontFamily: "BricolageGrotesque_700Bold",
+                  color: "#f5f5f5",
+                  fontSize: 17,
+                  letterSpacing: -0.3,
+                }}
+              >
+                {restaurant.name}
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
+                {restaurant.tags.slice(0, 2).map((tag) => (
+                  <View
+                    key={tag}
+                    style={{
+                      backgroundColor: "rgba(255, 153, 51, 0.15)",
+                      borderRadius: 10,
+                      paddingHorizontal: 6,
+                      paddingVertical: 1,
+                      marginRight: 4,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: "Manrope_500Medium",
+                        color: "#FF9933",
+                        fontSize: 9,
+                      }}
+                    >
+                      {tag}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Pressable
-                className="mr-2"
                 onPress={handleToggleFavorite}
                 style={{
-                  backgroundColor: "rgba(15, 15, 15, 0.6)",
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
                   alignItems: "center",
                   justifyContent: "center",
+                  backgroundColor: "#1a1a1a",
                   borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.08)",
+                  borderColor: "#2a2a2a",
+                  marginRight: 6,
                 }}
               >
                 <Heart
-                  size={20}
+                  size={16}
                   color={isFavorited ? "#EF4444" : "#f5f5f5"}
                   fill={isFavorited ? "#EF4444" : "transparent"}
                 />
               </Pressable>
               <Pressable
                 style={{
-                  backgroundColor: "rgba(15, 15, 15, 0.6)",
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
                   alignItems: "center",
                   justifyContent: "center",
+                  backgroundColor: "#1a1a1a",
                   borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.08)",
+                  borderColor: "#2a2a2a",
                 }}
               >
-                <Share2 size={20} color="#f5f5f5" />
+                <Share2 size={16} color="#f5f5f5" />
               </Pressable>
             </View>
           </View>
         </SafeAreaView>
+      </Animated.View>
 
-        {/* Bottom Content on Image */}
-        <View className="absolute bottom-0 left-0 right-0 px-5 pb-2">
-          <View className="flex-row items-center mb-2">
-            {restaurant.tags.map((tag) => (
-              <View
-                key={tag}
-                className="rounded-full px-2.5 py-0.5 mr-2"
-                style={{
-                  backgroundColor: "rgba(255, 153, 51, 0.2)",
-                  borderWidth: 1,
-                  borderColor: "rgba(255, 153, 51, 0.15)",
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: "Manrope_600SemiBold",
-                    color: "#FF9933",
-                    fontSize: 11,
-                  }}
-                >
-                  {tag}
-                </Text>
-              </View>
-            ))}
-          </View>
-          <Animated.Text
-            entering={FadeInDown.duration(500)}
-            style={{
-              fontFamily: "BricolageGrotesque_800ExtraBold",
-              color: "#f5f5f5",
-              fontSize: 40,
-              lineHeight: 44,
-              letterSpacing: -0.5,
-            }}
-          >
-            {restaurant.name}
-          </Animated.Text>
-        </View>
-      </View>
-
-      <ScrollView
+      {/* Main ScrollView */}
+      <Animated.ScrollView
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 }}
       >
+        {/* Hero — fixed height container, content parallaxes inside */}
+        <View style={{ height: HERO_HEIGHT, overflow: "hidden" }}>
+          <Animated.View
+            style={[heroInnerStyle, { position: "absolute", top: 0, left: 0, right: 0, height: HERO_HEIGHT }]}
+          >
+            <Image
+              source={{ uri: restaurant.image }}
+              style={{ width: "100%", height: HERO_HEIGHT, position: "absolute", top: 0, left: 0, right: 0 }}
+              resizeMode="cover"
+            />
+            <LinearGradient
+              colors={[
+                "rgba(15,15,15,0.5)",
+                "transparent",
+                "rgba(15,15,15,0.7)",
+                "rgba(15,15,15,1)",
+              ]}
+              locations={[0, 0.3, 0.7, 1]}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+              }}
+            />
+
+            {/* Top Nav over hero */}
+            <SafeAreaView edges={["top"]} className="absolute top-0 left-0 right-0">
+              <View className="flex-row items-center justify-between px-5 pt-2">
+                <Pressable
+                  onPress={() => router.back()}
+                  style={{
+                    backgroundColor: "rgba(15, 15, 15, 0.6)",
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <ArrowLeft size={22} color="#f5f5f5" />
+                </Pressable>
+                <View className="flex-row">
+                  <Pressable
+                    className="mr-2"
+                    onPress={handleToggleFavorite}
+                    style={{
+                      backgroundColor: "rgba(15, 15, 15, 0.6)",
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.08)",
+                    }}
+                  >
+                    <Heart
+                      size={20}
+                      color={isFavorited ? "#EF4444" : "#f5f5f5"}
+                      fill={isFavorited ? "#EF4444" : "transparent"}
+                    />
+                  </Pressable>
+                  <Pressable
+                    style={{
+                      backgroundColor: "rgba(15, 15, 15, 0.6)",
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.08)",
+                    }}
+                  >
+                    <Share2 size={20} color="#f5f5f5" />
+                  </Pressable>
+                </View>
+              </View>
+            </SafeAreaView>
+
+            {/* Bottom Content on Image */}
+            <Animated.View
+              style={[heroContentStyle, { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: 8 }]}
+            >
+              <View className="flex-row items-center mb-2">
+                {restaurant.tags.map((tag) => (
+                  <View
+                    key={tag}
+                    className="rounded-full px-2.5 py-0.5 mr-2"
+                    style={{
+                      backgroundColor: "rgba(255, 153, 51, 0.2)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255, 153, 51, 0.15)",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: "Manrope_600SemiBold",
+                        color: "#FF9933",
+                        fontSize: 11,
+                      }}
+                    >
+                      {tag}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <Text
+                style={{
+                  fontFamily: "BricolageGrotesque_800ExtraBold",
+                  color: "#f5f5f5",
+                  fontSize: 40,
+                  lineHeight: 44,
+                  letterSpacing: -0.5,
+                }}
+              >
+                {restaurant.name}
+              </Text>
+            </Animated.View>
+          </Animated.View>
+        </View>
+
         {/* Info Section */}
-        <Animated.View
-          entering={FadeInUp.delay(200).duration(500)}
-          className="px-5 pt-3 pb-4"
-        >
+        <View className="px-5 pt-3 pb-4">
           <Text
             style={{
               fontFamily: "Manrope_500Medium",
@@ -296,9 +502,7 @@ export default function RestaurantDetail() {
               </Text>
             </View>
 
-            <View
-              style={{ width: 1, height: 30, backgroundColor: "#333333" }}
-            />
+            <View style={{ width: 1, height: 30, backgroundColor: "#333333" }} />
 
             <View className="items-center">
               <View className="flex-row items-center">
@@ -321,9 +525,7 @@ export default function RestaurantDetail() {
               </Text>
             </View>
 
-            <View
-              style={{ width: 1, height: 30, backgroundColor: "#333333" }}
-            />
+            <View style={{ width: 1, height: 30, backgroundColor: "#333333" }} />
 
             <View className="items-center">
               <View className="flex-row items-center">
@@ -379,10 +581,10 @@ export default function RestaurantDetail() {
           >
             {restaurant.description}
           </Text>
-        </Animated.View>
+        </View>
 
         {/* Menu Section */}
-        <Animated.View entering={FadeInUp.delay(400).duration(500)}>
+        <View>
           <View className="px-5 mt-4 mb-4">
             <Text
               style={{
@@ -405,7 +607,6 @@ export default function RestaurantDetail() {
             </Text>
           </View>
 
-          {/* Masonry Grid */}
           <View className="px-4 flex-row">
             <View className="flex-1 mr-1.5">
               {leftColumn.map((item, index) => (
@@ -430,8 +631,8 @@ export default function RestaurantDetail() {
               ))}
             </View>
           </View>
-        </Animated.View>
-      </ScrollView>
+        </View>
+      </Animated.ScrollView>
 
       {/* Sticky Footer */}
       <View
@@ -444,7 +645,6 @@ export default function RestaurantDetail() {
       >
         <SafeAreaView edges={["bottom"]}>
           <View className="flex-row items-center px-5 py-3">
-            {/* Cart Button */}
             {cartItems.length > 0 && (
               <Pressable
                 onPress={() => {
@@ -495,7 +695,6 @@ export default function RestaurantDetail() {
               </Pressable>
             )}
 
-            {/* Join Waitlist Button */}
             <Animated.View style={[joinBtnStyle, { flex: 1 }]}>
               <Pressable
                 onPress={handleJoinWaitlist}
@@ -532,7 +731,6 @@ export default function RestaurantDetail() {
         </SafeAreaView>
       </View>
 
-      {/* Food Detail Modal */}
       {selectedItem && (
         <FoodDetailModal
           item={selectedItem}
@@ -541,7 +739,6 @@ export default function RestaurantDetail() {
         />
       )}
 
-      {/* Group Cart Drawer */}
       {showCart && (
         <GroupCartDrawer
           items={cartItems}
