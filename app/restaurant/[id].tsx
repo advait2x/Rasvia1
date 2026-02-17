@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -35,11 +35,17 @@ import { WaitBadge } from "@/components/WaitBadge";
 import { MenuGridItem } from "@/components/MenuGridItem";
 import { FoodDetailModal } from "@/components/FoodDetailModal";
 import { GroupCartDrawer } from "@/components/GroupCartDrawer";
+import { supabase } from "@/lib/supabase";
 import {
-  restaurants,
-  menuItems,
+  type SupabaseRestaurant,
+  type UIRestaurant,
+  type SupabaseMenuItem,
+  type UIMenuItem,
+  mapSupabaseToUI,
+  mapMenuItemToUI,
+} from "@/lib/restaurant-types";
+import {
   groupMembers,
-  type MenuItem,
   type CartItem,
 } from "@/data/mockData";
 
@@ -49,15 +55,67 @@ export default function RestaurantDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
 
-  const restaurant = restaurants.find((r) => r.id === id) || restaurants[0];
+  // ==================================================
+  // STATE MANAGEMENT - Supabase Data
+  // ==================================================
+  const [restaurant, setRestaurant] = useState<UIRestaurant | null>(null);
+  const [menu, setMenu] = useState<UIMenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [selectedItem, setSelectedItem] = useState<UIMenuItem | null>(null);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
 
+  // ==================================================
+  // FETCH RESTAURANT & MENU FROM SUPABASE
+  // ==================================================
+  useEffect(() => {
+    if (id) {
+      fetchRestaurantData();
+      fetchMenu();
+    }
+  }, [id]);
+
+  async function fetchRestaurantData() {
+    try {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        setRestaurant(mapSupabaseToUI(data as SupabaseRestaurant));
+      }
+    } catch (error) {
+      console.error('Error fetching restaurant:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchMenu() {
+    try {
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select('*')
+        .eq('restaurant_id', id)
+        .eq('is_available', true); // Only show available items
+
+      if (error) throw error;
+      if (data) {
+        const uiMenuItems = data.map(item => mapMenuItemToUI(item as SupabaseMenuItem));
+        setMenu(uiMenuItems);
+      }
+    } catch (error) {
+      console.error('Error fetching menu:', error);
+    }
+  }
+
   const handleAddToCart = useCallback(
-    (item: MenuItem) => {
+    (item: UIMenuItem) => {
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -99,8 +157,8 @@ export default function RestaurantDetail() {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     }
-    router.push(`/waitlist/${restaurant.id}` as any);
-  }, [router, restaurant.id]);
+    router.push(`/waitlist/${restaurant?.id}` as any);
+  }, [router, restaurant?.id]);
 
   const handleToggleFavorite = useCallback(() => {
     if (Platform.OS !== "web") {
@@ -110,13 +168,24 @@ export default function RestaurantDetail() {
   }, []);
 
   // Split menu into two columns for masonry layout
-  const leftColumn = menuItems.filter((_, i) => i % 2 === 0);
-  const rightColumn = menuItems.filter((_, i) => i % 2 !== 0);
+  const leftColumn = menu.filter((_, i) => i % 2 === 0);
+  const rightColumn = menu.filter((_, i) => i % 2 !== 0);
 
   const joinBtnScale = useSharedValue(1);
   const joinBtnStyle = useAnimatedStyle(() => ({
     transform: [{ scale: joinBtnScale.value }],
   }));
+
+  // Show loading or error state
+  if (!restaurant) {
+    return (
+      <View className="flex-1 bg-rasvia-black items-center justify-center">
+        <Text style={{ color: '#999999', fontFamily: 'Manrope_500Medium' }}>
+          {loading ? 'Loading...' : 'Restaurant not found'}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-rasvia-black">

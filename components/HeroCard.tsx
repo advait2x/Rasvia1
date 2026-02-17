@@ -3,7 +3,7 @@ import { View, Text, Pressable, Image, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { WaitBadge } from "@/components/WaitBadge";
 import { Star, MapPin } from "lucide-react-native";
-import type { Restaurant } from "@/data/mockData";
+import type { UIRestaurant } from "@/lib/restaurant-types";
 import Animated, {
   FadeInDown,
   useAnimatedStyle,
@@ -15,7 +15,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CARD_WIDTH = SCREEN_WIDTH - 48;
 
 interface HeroCardProps {
-  restaurant: Restaurant;
+  restaurant: UIRestaurant;
   index: number;
   onPress: () => void;
 }

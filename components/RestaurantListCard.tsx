@@ -3,7 +3,7 @@ import { View, Text, Pressable, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { WaitBadge } from "@/components/WaitBadge";
 import { Star } from "lucide-react-native";
-import type { Restaurant } from "@/data/mockData";
+import type { UIRestaurant } from "@/lib/restaurant-types";
 import Animated, {
   FadeInRight,
   useAnimatedStyle,
@@ -12,7 +12,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 interface RestaurantListCardProps {
-  restaurant: Restaurant;
+  restaurant: UIRestaurant;
   index: number;
   onPress: () => void;
 }

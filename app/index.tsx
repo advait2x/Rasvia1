@@ -24,8 +24,13 @@ import { HeroCard } from "@/components/HeroCard";
 import { RestaurantListCard } from "@/components/RestaurantListCard";
 import { FilterBar } from "@/components/FilterBar";
 import { FloatingQRButton } from "@/components/FloatingQRButton";
-import { restaurants, type FilterType } from "@/data/mockData";
-import { testSupabaseConnection } from "@/lib/test-supabase";
+import { type FilterType } from "@/data/mockData";
+import { supabase } from "@/lib/supabase";
+import {
+  type SupabaseRestaurant,
+  type UIRestaurant,
+  mapSupabaseToUI
+} from "@/lib/restaurant-types";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -33,10 +38,60 @@ export default function DiscoveryFeed() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
 
-  // Test Supabase connection on mount
+  // ==================================================
+  // STATE MANAGEMENT - Replace Mock Data
+  // ==================================================
+  const [restaurants, setRestaurants] = useState<UIRestaurant[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // ==================================================
+  // THE "CHALO" REALTIME ENGINE
+  // ==================================================
   useEffect(() => {
-    testSupabaseConnection();
+    fetchRestaurants();
+
+    // This listens for changes to 'restaurants' table
+    const subscription = supabase
+      .channel('public:restaurants')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'restaurants' },
+        (payload) => {
+          console.log('Realtime Update:', payload);
+          // Instant UI update without refreshing
+          const updatedRestaurant = mapSupabaseToUI(payload.new as SupabaseRestaurant);
+          setRestaurants((currentData) =>
+            currentData.map((item) =>
+              item.id === updatedRestaurant.id ? updatedRestaurant : item
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
   }, []);
+
+  async function fetchRestaurants() {
+    try {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('*')
+        .order('current_wait_time', { ascending: true }); // Show fastest first
+
+      if (error) throw error;
+      if (data) {
+        const uiRestaurants = data.map(mapSupabaseToUI);
+        setRestaurants(uiRestaurants);
+      }
+    } catch (error) {
+      console.error('Error fetching restaurants:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const filteredRestaurants = restaurants.filter((r) => {
     if (activeFilter === "all") return true;
