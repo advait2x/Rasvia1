@@ -24,6 +24,7 @@ import { HeroCard } from "@/components/HeroCard";
 import { RestaurantListCard } from "@/components/RestaurantListCard";
 import { FilterBar } from "@/components/FilterBar";
 import { FloatingQRButton } from "@/components/FloatingQRButton";
+import { SearchOverlay } from "@/components/SearchOverlay";
 import { type FilterType } from "@/data/mockData";
 import { supabase } from "@/lib/supabase";
 import {
@@ -37,6 +38,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 export default function DiscoveryFeed() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
+  const [showSearch, setShowSearch] = useState(false);
 
   // ==================================================
   // STATE MANAGEMENT - Replace Mock Data
@@ -163,6 +165,7 @@ export default function DiscoveryFeed() {
           <View className="flex-row items-center">
             <Pressable
               className="mr-3"
+              onPress={() => setShowSearch(true)}
               style={{
                 backgroundColor: "#1a1a1a",
                 width: 44,
@@ -376,7 +379,12 @@ export default function DiscoveryFeed() {
                 { emoji: "🥡", label: "Indo-Chinese" },
                 { emoji: "🍰", label: "Desserts" },
               ].map((cuisine, i) => (
-                <CuisineChip key={cuisine.label} cuisine={cuisine} index={i} />
+                <CuisineChip
+                  key={cuisine.label}
+                  cuisine={cuisine}
+                  index={i}
+                  onPress={() => router.push(`/cuisine/${encodeURIComponent(cuisine.label)}` as any)}
+                />
               ))}
             </ScrollView>
           </Animated.View>
@@ -384,6 +392,9 @@ export default function DiscoveryFeed() {
 
         {/* Floating QR Button */}
         <FloatingQRButton onPress={handleQRPress} />
+
+        {/* Search Overlay */}
+        {showSearch && <SearchOverlay onClose={() => setShowSearch(false)} />}
       </SafeAreaView>
     </View>
   );
@@ -392,9 +403,11 @@ export default function DiscoveryFeed() {
 function CuisineChip({
   cuisine,
   index,
+  onPress,
 }: {
   cuisine: { emoji: string; label: string };
   index: number;
+  onPress: () => void;
 }) {
   const pressScale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({
@@ -409,6 +422,12 @@ function CuisineChip({
       <Pressable
         className="items-center mr-4"
         style={{ width: 76 }}
+        onPress={() => {
+          if (Platform.OS !== "web") {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }
+          onPress();
+        }}
         onPressIn={() => {
           pressScale.value = withSpring(0.92);
         }}
