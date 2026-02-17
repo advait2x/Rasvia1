@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Search, Bell, MapPin, TrendingUp, Zap } from "lucide-react-native";
+import { Search, Bell, MapPin, TrendingUp, Zap, User } from "lucide-react-native";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -76,6 +76,7 @@ export default function DiscoveryFeed() {
     };
   }, []);
 
+
   async function fetchRestaurants() {
     try {
       const { data, error } = await supabase
@@ -83,7 +84,15 @@ export default function DiscoveryFeed() {
         .select('*')
         .order('current_wait_time', { ascending: true }); // Show fastest first
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Supabase Error:', error);
+        Alert.alert(
+          'Database Error',
+          `Could not fetch restaurants:\n\n${error.message}\n\nℹ️ This might be a Row Level Security (RLS) policy issue.`,
+          [{ text: 'OK' }]
+        );
+        throw error;
+      }
       if (data) {
         const uiRestaurants = data.map(mapSupabaseToUI);
         setRestaurants(uiRestaurants);
@@ -206,6 +215,22 @@ export default function DiscoveryFeed() {
                   borderColor: "#1a1a1a",
                 }}
               />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push("/profile" as any)}
+              style={{
+                backgroundColor: "#1a1a1a",
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: "#2a2a2a",
+                marginLeft: 10,
+              }}
+            >
+              <User size={20} color="#FF9933" />
             </Pressable>
           </View>
         </Animated.View>

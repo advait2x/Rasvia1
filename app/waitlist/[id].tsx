@@ -6,6 +6,7 @@ import {
   Pressable,
   Alert,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -28,20 +29,102 @@ import Animated, {
 import * as Haptics from "expo-haptics";
 import { WaitlistRing } from "@/components/WaitlistRing";
 import { AppetizerCarousel } from "@/components/AppetizerCarousel";
-import { restaurants, appetizers, type MenuItem } from "@/data/mockData";
+import { supabase } from "@/lib/supabase";
+import {
+  type SupabaseRestaurant,
+  type UIRestaurant,
+  type SupabaseMenuItem,
+  type UIMenuItem,
+  mapSupabaseToUI,
+  mapMenuItemToUI,
+} from "@/lib/restaurant-types";
+import type { MenuItem } from "@/data/mockData";
 
 export default function WaitlistStatus() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
 
-  const restaurant = restaurants.find((r) => r.id === id) || restaurants[0];
+  // ==========================================
+  // SUPABASE STATE
+  // ==========================================
+  const [restaurant, setRestaurant] = useState<UIRestaurant | null>(null);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [position, setPosition] = useState(restaurant.queueLength);
-  const [estimatedMinutes, setEstimatedMinutes] = useState(restaurant.waitTime);
+  const [position, setPosition] = useState(1);
+  const [estimatedMinutes, setEstimatedMinutes] = useState(5);
   const [preOrderItems, setPreOrderItems] = useState<MenuItem[]>([]);
+
+  // ==========================================
+  // FETCH FROM SUPABASE
+  // ==========================================
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        // 1. Fetch the restaurant
+        const { data: restData, error: restError } = await supabase
+          .from("restaurants")
+          .select("*")
+          .eq("id", Number(id))
+          .single();
+
+        if (restError) {
+          console.error("❌ Error fetching restaurant:", restError);
+          Alert.alert("Error", "Could not load restaurant data.");
+          return;
+        }
+
+        if (restData) {
+          const uiRestaurant = mapSupabaseToUI(restData as SupabaseRestaurant);
+          setRestaurant(uiRestaurant);
+          setPosition(uiRestaurant.queueLength);
+          setEstimatedMinutes(uiRestaurant.waitTime);
+        }
+
+        // 2. Fetch menu items for this restaurant
+        const { data: menuData, error: menuError } = await supabase
+          .from("menu_items")
+          .select("*")
+          .eq("restaurant_id", Number(id))
+          .eq("is_available", true);
+
+        if (menuError) {
+          console.error("❌ Error fetching menu items:", menuError);
+        }
+
+        if (menuData && menuData.length > 0) {
+          const uiMenuItems = (menuData as SupabaseMenuItem[]).map(
+            (item): MenuItem => {
+              const mapped = mapMenuItemToUI(item);
+              return {
+                id: mapped.id,
+                name: mapped.name,
+                description: mapped.description,
+                price: mapped.price,
+                image: mapped.image,
+                category: mapped.category,
+                isPopular: mapped.isPopular,
+                isVegetarian: mapped.isVegetarian,
+                spiceLevel: mapped.spiceLevel,
+              };
+            }
+          );
+          setMenuItems(uiMenuItems);
+        }
+      } catch (error) {
+        console.error("Error:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, [id]);
 
   // Simulate live queue updates
   useEffect(() => {
+    if (!restaurant) return;
+
     const interval = setInterval(() => {
       setPosition((prev) => {
         if (prev <= 1) {
@@ -56,7 +139,7 @@ export default function WaitlistStatus() {
       setEstimatedMinutes((prev) => Math.max(1, prev - 3));
     }, 8000);
     return () => clearInterval(interval);
-  }, []);
+  }, [restaurant]);
 
   const handleLeaveQueue = useCallback(() => {
     if (Platform.OS !== "web") {
@@ -100,6 +183,27 @@ export default function WaitlistStatus() {
   const menuBtnStyle = useAnimatedStyle(() => ({
     transform: [{ scale: menuBtnScale.value }],
   }));
+
+  // ==========================================
+  // LOADING STATE
+  // ==========================================
+  if (loading || !restaurant) {
+    return (
+      <View className="flex-1 bg-rasvia-black items-center justify-center">
+        <ActivityIndicator size="large" color="#FF9933" />
+        <Text
+          style={{
+            fontFamily: "Manrope_500Medium",
+            color: "#999999",
+            fontSize: 14,
+            marginTop: 12,
+          }}
+        >
+          Loading waitlist...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-rasvia-black">
@@ -154,7 +258,7 @@ export default function WaitlistStatus() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 40 }}
         >
-          {/* Restaurant Info - left aligned per PRD anti-pattern guardrails */}
+          {/* Restaurant Info */}
           <Animated.View
             entering={FadeInDown.delay(100).duration(500)}
             className="px-5 mb-6"
@@ -228,7 +332,7 @@ export default function WaitlistStatus() {
                     fontSize: 28,
                   }}
                 >
-                  {restaurant.partySize}
+                  {restaurant.partySize || 1}
                 </Text>
                 <Text
                   style={{
@@ -360,13 +464,15 @@ export default function WaitlistStatus() {
             </Animated.View>
           )}
 
-          {/* Appetizer Carousel */}
-          <Animated.View entering={FadeInUp.delay(600).duration(500)}>
-            <AppetizerCarousel
-              items={appetizers}
-              onAddItem={handleAddAppetizer}
-            />
-          </Animated.View>
+          {/* Appetizer Carousel — only if menu items exist */}
+          {menuItems.length > 0 && (
+            <Animated.View entering={FadeInUp.delay(600).duration(500)}>
+              <AppetizerCarousel
+                items={menuItems}
+                onAddItem={handleAddAppetizer}
+              />
+            </Animated.View>
+          )}
 
           {/* Timeline */}
           <Animated.View

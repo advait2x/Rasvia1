@@ -2,7 +2,7 @@ import {
   DarkTheme,
   ThemeProvider,
 } from "@react-navigation/native";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -26,6 +26,7 @@ import {
   useFonts as useJetBrains,
   JetBrainsMono_600SemiBold,
 } from "@expo-google-fonts/jetbrains-mono";
+import { AuthProvider, useAuth } from "@/lib/auth-context";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -40,6 +41,75 @@ const rasviaTheme = {
     primary: "#FF9933",
   },
 };
+
+// ==========================================
+// AUTH GATE: Redirects based on session
+// ==========================================
+function AuthGate() {
+  const { session, loading, needsOnboarding } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+
+    const inAuthScreen = segments[0] === "auth";
+    const inOnboarding = segments[0] === "onboarding";
+
+    if (!session && !inAuthScreen) {
+      router.replace("/auth");
+    } else if (session && inAuthScreen) {
+      if (needsOnboarding) {
+        router.replace("/onboarding");
+      } else {
+        router.replace("/");
+      }
+    } else if (session && needsOnboarding && !inOnboarding) {
+      router.replace("/onboarding");
+    } else if (session && !needsOnboarding && inOnboarding) {
+      router.replace("/");
+    }
+  }, [session, loading, needsOnboarding, segments]);
+
+  // Block ALL rendering until auth state is known
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#0f0f0f", alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator size="large" color="#FF9933" />
+      </View>
+    );
+  }
+
+  return (
+    <Stack
+      screenOptions={({ route }) => ({
+        headerShown: !route.name.startsWith("tempobook"),
+        contentStyle: { backgroundColor: "#0f0f0f" },
+        animation: "slide_from_right",
+      })}
+    >
+      <Stack.Screen name="auth" options={{ headerShown: false, animation: "fade" }} />
+      <Stack.Screen name="onboarding" options={{ headerShown: false, animation: "fade" }} />
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="restaurant/[id]"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
+        name="cuisine/[name]"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
+        name="waitlist/[id]"
+        options={{ headerShown: false, animation: "slide_from_bottom" }}
+      />
+      <Stack.Screen
+        name="profile"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
   const [bricolageLoaded] = useBricolage({
@@ -78,27 +148,9 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={rasviaTheme}>
           <StatusBar style="light" />
-          <Stack
-            screenOptions={({ route }) => ({
-              headerShown: !route.name.startsWith("tempobook"),
-              contentStyle: { backgroundColor: "#0f0f0f" },
-              animation: "slide_from_right",
-            })}
-          >
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="restaurant/[id]"
-              options={{ headerShown: false, animation: "slide_from_right" }}
-            />
-            <Stack.Screen
-              name="cuisine/[name]"
-              options={{ headerShown: false, animation: "slide_from_right" }}
-            />
-            <Stack.Screen
-              name="waitlist/[id]"
-              options={{ headerShown: false, animation: "slide_from_bottom" }}
-            />
-          </Stack>
+          <AuthProvider>
+            <AuthGate />
+          </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
