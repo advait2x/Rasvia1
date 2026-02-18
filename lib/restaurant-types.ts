@@ -45,6 +45,8 @@ export interface UIRestaurant {
     description: string;
     tags: string[];
     queueLength: number;
+    lat: number | null;
+    long: number | null;
 }
 
 // ==========================================
@@ -87,6 +89,8 @@ export function mapSupabaseToUI(restaurant: SupabaseRestaurant): UIRestaurant {
         description: restaurant.description || '',
         tags: cuisineTags,
         queueLength: Math.ceil(waitTime / 5), // Rough estimate: 1 party per 5 min
+        lat: restaurant.lat ?? null,
+        long: restaurant.long ?? null,
     };
 }
 

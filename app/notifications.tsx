@@ -19,7 +19,12 @@ export default function NotificationsScreen() {
                     className="flex-row items-center px-5 pt-2 pb-4"
                 >
                     <Pressable
-                        onPress={() => router.back()}
+                        onPress={() => {
+                            if (Platform.OS !== "web") {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }
+                            router.back();
+                        }}
                         style={{
                             backgroundColor: "#1a1a1a",
                             width: 44,

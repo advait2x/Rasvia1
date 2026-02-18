@@ -174,7 +174,12 @@ export default function DiscoveryFeed() {
           <View className="flex-row items-center">
             <Pressable
               className="mr-3"
-              onPress={() => setShowSearch(true)}
+              onPress={() => {
+                if (Platform.OS !== "web") {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                setShowSearch(true);
+              }}
               style={{
                 backgroundColor: "#1a1a1a",
                 width: 44,
@@ -244,7 +249,12 @@ export default function DiscoveryFeed() {
               />
             </Pressable>
             <Pressable
-              onPress={() => router.push("/profile" as any)}
+              onPress={() => {
+                if (Platform.OS !== "web") {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                router.push("/profile" as any);
+              }}
               style={{
                 backgroundColor: "#1a1a1a",
                 width: 44,
