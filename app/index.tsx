@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Search, Bell, MapPin, TrendingUp, Zap, User } from "lucide-react-native";
+import { Search, Bell, MapPin, TrendingUp, Zap, User, Map } from "lucide-react-native";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -187,6 +187,27 @@ export default function DiscoveryFeed() {
               }}
             >
               <Search size={20} color="#f5f5f5" />
+            </Pressable>
+            <Pressable
+              className="mr-3"
+              onPress={() => {
+                if (Platform.OS !== "web") {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                router.push("/map" as any);
+              }}
+              style={{
+                backgroundColor: "#1a1a1a",
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: "#2a2a2a",
+              }}
+            >
+              <Map size={20} color="#f5f5f5" />
             </Pressable>
             <Pressable
               onPress={() => {
