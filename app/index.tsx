@@ -189,6 +189,12 @@ export default function DiscoveryFeed() {
               <Search size={20} color="#f5f5f5" />
             </Pressable>
             <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                router.push("/notifications" as any);
+              }}
               style={{
                 backgroundColor: "#1a1a1a",
                 width: 44,
@@ -403,14 +409,21 @@ export default function DiscoveryFeed() {
                 { emoji: "🦐", label: "Sri Lankan" },
                 { emoji: "🥡", label: "Indo-Chinese" },
                 { emoji: "🍰", label: "Desserts" },
-              ].map((cuisine, i) => (
-                <CuisineChip
-                  key={cuisine.label}
-                  cuisine={cuisine}
-                  index={i}
-                  onPress={() => router.push(`/cuisine/${encodeURIComponent(cuisine.label)}` as any)}
-                />
-              ))}
+              ]
+                .filter((cuisine) => {
+                  // Only show cuisines that have at least one restaurant
+                  return restaurants.some(
+                    (r) => r.cuisineCategory?.toLowerCase() === cuisine.label.toLowerCase()
+                  );
+                })
+                .map((cuisine, i) => (
+                  <CuisineChip
+                    key={cuisine.label}
+                    cuisine={cuisine}
+                    index={i}
+                    onPress={() => router.push(`/cuisine/${encodeURIComponent(cuisine.label)}` as any)}
+                  />
+                ))}
             </ScrollView>
           </Animated.View>
         </ScrollView>

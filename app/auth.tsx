@@ -23,6 +23,7 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { supabase } from "@/lib/supabase";
+import { InAppNotification } from "@/components/InAppNotification";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -30,8 +31,15 @@ export default function AuthScreen() {
     const [isSignUp, setIsSignUp] = useState(false);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [firstName, setFirstName] = useState("");
+    const [lastInitial, setLastInitial] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [notification, setNotification] = useState<{
+        visible: boolean;
+        message: string;
+        type: "error" | "success" | "info";
+    }>({ visible: false, message: "", type: "error" });
 
     const btnScale = useSharedValue(1);
     const btnStyle = useAnimatedStyle(() => ({
@@ -40,18 +48,44 @@ export default function AuthScreen() {
 
     async function handleAuth() {
         if (!email || !password) {
-            Alert.alert("Missing Fields", "Please enter both email and password.");
+            setNotification({
+                visible: true,
+                message: "Please enter both email and password.",
+                type: "error",
+            });
+            return;
+        }
+        
+        if (isSignUp && (!firstName || !lastInitial)) {
+            setNotification({
+                visible: true,
+                message: "Please enter your first name and last initial.",
+                type: "error",
+            });
             return;
         }
 
         setLoading(true);
         try {
             if (isSignUp) {
-                const { error } = await supabase.auth.signUp({
+                const { data, error } = await supabase.auth.signUp({
                     email: email.trim(),
                     password,
                 });
                 if (error) throw error;
+                
+                // Create profile with name
+                if (data.user) {
+                    const fullName = `${firstName.trim()} ${lastInitial.trim().toUpperCase()}.`;
+                    const { error: profileError } = await supabase
+                        .from('profiles')
+                        .upsert({
+                            id: data.user.id,
+                            full_name: fullName,
+                            created_at: new Date().toISOString(),
+                        });
+                    if (profileError) console.error('Profile creation error:', profileError);
+                }
                 // Session change will be handled by AuthProvider → auto redirect
             } else {
                 const { error } = await supabase.auth.signInWithPassword({
@@ -62,7 +96,15 @@ export default function AuthScreen() {
                 // Session change will be handled by AuthProvider → auto redirect
             }
         } catch (error: any) {
-            Alert.alert("Auth Error", error.message || "Something went wrong.");
+            // Show in-app notification instead of Alert
+            const message = error.message || "Something went wrong.";
+            setNotification({
+                visible: true,
+                message: message.includes("already registered")
+                    ? "This account already exists. Please sign in instead."
+                    : message,
+                type: "error",
+            });
         } finally {
             setLoading(false);
         }
@@ -70,6 +112,14 @@ export default function AuthScreen() {
 
     return (
         <View className="flex-1 bg-rasvia-black">
+            {/* In-App Notification */}
+            <InAppNotification
+                visible={notification.visible}
+                message={notification.message}
+                type={notification.type}
+                onDismiss={() => setNotification({ ...notification, visible: false })}
+            />
+
             {/* Background Image */}
             <Image
                 source={{
@@ -169,6 +219,89 @@ export default function AuthScreen() {
                                 ? "Join the waitlist revolution."
                                 : "Sign in to skip the line."}
                         </Text>
+
+                        {/* Name Inputs (Sign Up Only) */}
+                        {isSignUp && (
+                            <>
+                                <View
+                                    style={{
+                                        flexDirection: "row",
+                                        marginBottom: 6,
+                                        gap: 12,
+                                    }}
+                                >
+                                    <View
+                                        style={{
+                                            flex: 1,
+                                            flexDirection: "row",
+                                            alignItems: "center",
+                                            backgroundColor: "#262626",
+                                            borderRadius: 16,
+                                            borderWidth: 1,
+                                            borderColor: "#333333",
+                                            paddingHorizontal: 16,
+                                            height: 56,
+                                        }}
+                                    >
+                                        <TextInput
+                                            style={{
+                                                flex: 1,
+                                                color: "#f5f5f5",
+                                                fontFamily: "Manrope_500Medium",
+                                                fontSize: 15,
+                                            }}
+                                            placeholder="First name"
+                                            placeholderTextColor="#666666"
+                                            value={firstName}
+                                            onChangeText={setFirstName}
+                                            autoCapitalize="words"
+                                            autoCorrect={false}
+                                        />
+                                    </View>
+                                    <View
+                                        style={{
+                                            width: 80,
+                                            flexDirection: "row",
+                                            alignItems: "center",
+                                            backgroundColor: "#262626",
+                                            borderRadius: 16,
+                                            borderWidth: 1,
+                                            borderColor: "#333333",
+                                            paddingHorizontal: 16,
+                                            height: 56,
+                                        }}
+                                    >
+                                        <TextInput
+                                            style={{
+                                                flex: 1,
+                                                color: "#f5f5f5",
+                                                fontFamily: "Manrope_500Medium",
+                                                fontSize: 15,
+                                                textAlign: "center",
+                                            }}
+                                            placeholder="L"
+                                            placeholderTextColor="#666666"
+                                            value={lastInitial}
+                                            onChangeText={(text) => setLastInitial(text.slice(0, 1))}
+                                            maxLength={1}
+                                            autoCapitalize="characters"
+                                            autoCorrect={false}
+                                        />
+                                    </View>
+                                </View>
+                                <Text
+                                    style={{
+                                        fontFamily: "Manrope_500Medium",
+                                        color: "#666666",
+                                        fontSize: 12,
+                                        marginBottom: 14,
+                                        marginLeft: 4,
+                                    }}
+                                >
+                                    First name, last initial
+                                </Text>
+                            </>
+                        )}
 
                         {/* Email Input */}
                         <View

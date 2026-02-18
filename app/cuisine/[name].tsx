@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Image,
   Platform,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -20,7 +21,8 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { WaitBadge } from "@/components/WaitBadge";
-import { restaurants } from "@/data/mockData";
+import { supabase } from "@/lib/supabase";
+import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant } from "@/lib/restaurant-types";
 
 const cuisineEmojis: Record<string, string> = {
   "North Indian": "🍛",
@@ -34,13 +36,36 @@ const cuisineEmojis: Record<string, string> = {
 export default function CuisinePage() {
   const { name } = useLocalSearchParams<{ name: string }>();
   const router = useRouter();
+  const [restaurants, setRestaurants] = useState<UIRestaurant[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const decodedName = decodeURIComponent(name || "");
   const emoji = cuisineEmojis[decodedName] || "🍽️";
 
-  const matchingRestaurants = restaurants.filter(
-    (r) => r.cuisineCategory === decodedName
-  );
+  useEffect(() => {
+    async function fetchRestaurants() {
+      try {
+        const { data, error } = await supabase
+          .from('restaurants')
+          .select('*')
+          .ilike('cuisine_category', decodedName)
+          .order('current_wait_time', { ascending: true });
+
+        if (error) throw error;
+        if (data) {
+          const uiRestaurants = data.map((r: SupabaseRestaurant) => mapSupabaseToUI(r));
+          setRestaurants(uiRestaurants);
+        }
+      } catch (error) {
+        console.error('Error fetching restaurants for cuisine:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchRestaurants();
+  }, [decodedName]);
+
+  const matchingRestaurants = restaurants;
 
   const handleRestaurantPress = useCallback(
     (id: string) => {
@@ -102,11 +127,26 @@ export default function CuisinePage() {
           </View>
         </Animated.View>
 
+
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
         >
-          {matchingRestaurants.length === 0 ? (
+          {loading ? (
+            <View style={{ paddingVertical: 60, alignItems: "center" }}>
+              <ActivityIndicator size="large" color="#FF9933" />
+              <Text
+                style={{
+                  fontFamily: "Manrope_500Medium",
+                  color: "#999999",
+                  fontSize: 14,
+                  marginTop: 16,
+                }}
+              >
+                Loading restaurants...
+              </Text>
+            </View>
+          ) : matchingRestaurants.length === 0 ? (
             <Animated.View
               entering={FadeInDown.delay(200).duration(500)}
               style={{
@@ -159,7 +199,7 @@ function CuisineRestaurantCard({
   index,
   onPress,
 }: {
-  restaurant: (typeof restaurants)[0];
+  restaurant: UIRestaurant;
   index: number;
   onPress: () => void;
 }) {

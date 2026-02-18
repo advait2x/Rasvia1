@@ -9,6 +9,7 @@ import {
     Switch,
     ActivityIndicator,
     Dimensions,
+    TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -29,6 +30,7 @@ import {
     Check,
     Sparkles,
     Utensils,
+    Edit2,
 } from "lucide-react-native";
 import Animated, {
     FadeIn,
@@ -71,6 +73,11 @@ export default function ProfileSettingsScreen() {
     const router = useRouter();
     const { session } = useAuth();
     const [userEmail, setUserEmail] = useState("");
+    const [fullName, setFullName] = useState("");
+    const [createdAt, setCreatedAt] = useState<string | null>(null);
+    const [editingName, setEditingName] = useState(false);
+    const [tempFirstName, setTempFirstName] = useState("");
+    const [tempLastInitial, setTempLastInitial] = useState("");
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
     const [loggingOut, setLoggingOut] = useState(false);
 
@@ -101,7 +108,7 @@ export default function ProfileSettingsScreen() {
             try {
                 const { data, error } = await supabase
                     .from("profiles")
-                    .select("location_city, dietary_type, restricted_days")
+                    .select("location_city, dietary_type, restricted_days, full_name, created_at")
                     .eq("id", session.user.id)
                     .maybeSingle();
 
@@ -112,6 +119,10 @@ export default function ProfileSettingsScreen() {
                     setCity(c); setOrigCity(c);
                     setDietaryType(d); setOrigDietary(d);
                     setRestrictedDays(r); setOrigDays(r);
+                    
+                    // Set name and date
+                    setFullName(data.full_name || "");
+                    setCreatedAt(data.created_at);
                 }
             } catch { }
             setLoadingPrefs(false);
@@ -119,14 +130,16 @@ export default function ProfileSettingsScreen() {
         loadPrefs();
     }, [session]);
 
-    // Track changes
+    // Track changes (only after prefs are loaded)
     useEffect(() => {
+        if (loadingPrefs) return; // Don't track changes while loading
+        
         const changed =
             city !== origCity ||
             dietaryType !== origDietary ||
             JSON.stringify(restrictedDays.sort()) !== JSON.stringify(origDays.sort());
         setPrefsChanged(changed);
-    }, [city, dietaryType, restrictedDays, origCity, origDietary, origDays]);
+    }, [city, dietaryType, restrictedDays, origCity, origDietary, origDays, loadingPrefs]);
 
     const savePreferences = useCallback(async () => {
         if (!session?.user?.id || savingPrefs) return;
@@ -159,6 +172,31 @@ export default function ProfileSettingsScreen() {
         }
         setSavingPrefs(false);
     }, [session, city, dietaryType, restrictedDays, savingPrefs]);
+
+    const handleSaveName = useCallback(async () => {
+        if (!session?.user?.id) return;
+        try {
+            const newFullName = `${tempFirstName.trim()} ${tempLastInitial.trim().toUpperCase()}.`;
+            const { error } = await supabase
+                .from("profiles")
+                .update({
+                    full_name: newFullName,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", session.user.id);
+
+            if (error) throw error;
+            
+            setFullName(newFullName);
+            setEditingName(false);
+            
+            if (Platform.OS !== "web") {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+        } catch (err: any) {
+            Alert.alert("Error", err.message || "Could not update name.");
+        }
+    }, [session, tempFirstName, tempLastInitial]);
 
     async function handleLogout() {
         if (Platform.OS !== "web") {
@@ -248,6 +286,32 @@ export default function ProfileSettingsScreen() {
                             alignItems: "center",
                         }}
                     >
+                        <Pressable
+                            onPress={() => {
+                                // Parse full_name to get first name and last initial
+                                const parts = fullName.split(' ');
+                                const first = parts.slice(0, -1).join(' ');
+                                const lastInit = parts[parts.length - 1]?.replace('.', '') || '';
+                                setTempFirstName(first);
+                                setTempLastInitial(lastInit);
+                                setEditingName(true);
+                            }}
+                            style={{
+                                position: "absolute",
+                                top: 16,
+                                right: 16,
+                                width: 32,
+                                height: 32,
+                                borderRadius: 16,
+                                backgroundColor: "#262626",
+                                borderWidth: 1,
+                                borderColor: "#333333",
+                                alignItems: "center",
+                                justifyContent: "center",
+                            }}
+                        >
+                            <Edit2 size={14} color="#FF9933" />
+                        </Pressable>
                         <View
                             style={{
                                 width: 80,
@@ -272,7 +336,17 @@ export default function ProfileSettingsScreen() {
                             }}
                             numberOfLines={1}
                         >
-                            {userEmail || "User"}
+                            {fullName || userEmail || "User"}
+                        </Text>
+                        <Text
+                            style={{
+                                fontFamily: "Manrope_500Medium",
+                                color: "#999999",
+                                fontSize: 13,
+                                marginBottom: 2,
+                            }}
+                        >
+                            {userEmail || ""}
                         </Text>
                         <Text
                             style={{
@@ -281,7 +355,9 @@ export default function ProfileSettingsScreen() {
                                 fontSize: 13,
                             }}
                         >
-                            Foodie since 2026
+                            {createdAt 
+                                ? `Foodie since ${new Date(createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
+                                : "Foodie since 2026"}
                         </Text>
                     </Animated.View>
 
@@ -644,6 +720,154 @@ export default function ProfileSettingsScreen() {
                         </Pressable>
                     </Animated.View>
                 </ScrollView>
+
+                {/* Name Edit Modal */}
+                {editingName && (
+                    <View
+                        style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: "rgba(0, 0, 0, 0.7)",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            paddingHorizontal: 24,
+                        }}
+                    >
+                        <View
+                            style={{
+                                backgroundColor: "#1a1a1a",
+                                borderRadius: 20,
+                                borderWidth: 1,
+                                borderColor: "#2a2a2a",
+                                padding: 24,
+                                width: "100%",
+                                maxWidth: 400,
+                            }}
+                        >
+                            <Text
+                                style={{
+                                    fontFamily: "BricolageGrotesque_700Bold",
+                                    color: "#f5f5f5",
+                                    fontSize: 20,
+                                    marginBottom: 16,
+                                }}
+                            >
+                                Edit Name
+                            </Text>
+                            <View style={{ flexDirection: "row", gap: 12, marginBottom: 20 }}>
+                                <View style={{ flex: 1 }}>
+                                    <Text
+                                        style={{
+                                            fontFamily: "Manrope_600SemiBold",
+                                            color: "#999",
+                                            fontSize: 12,
+                                            marginBottom: 8,
+                                        }}
+                                    >
+                                        First Name
+                                    </Text>
+                                    <TextInput
+                                        value={tempFirstName}
+                                        onChangeText={setTempFirstName}
+                                        style={{
+                                            backgroundColor: "#262626",
+                                            borderRadius: 12,
+                                            borderWidth: 1,
+                                            borderColor: "#333",
+                                            paddingHorizontal: 14,
+                                            height: 48,
+                                            color: "#f5f5f5",
+                                            fontFamily: "Manrope_500Medium",
+                                            fontSize: 15,
+                                        }}
+                                        placeholderTextColor="#666"
+                                        autoCapitalize="words"
+                                    />
+                                </View>
+                                <View style={{ width: 80 }}>
+                                    <Text
+                                        style={{
+                                            fontFamily: "Manrope_600SemiBold",
+                                            color: "#999",
+                                            fontSize: 12,
+                                            marginBottom: 8,
+                                        }}
+                                    >
+                                        Last Initial
+                                    </Text>
+                                    <TextInput
+                                        value={tempLastInitial}
+                                        onChangeText={(text) => setTempLastInitial(text.slice(0, 1))}
+                                        maxLength={1}
+                                        style={{
+                                            backgroundColor: "#262626",
+                                            borderRadius: 12,
+                                            borderWidth: 1,
+                                            borderColor: "#333",
+                                            paddingHorizontal: 14,
+                                            height: 48,
+                                            color: "#f5f5f5",
+                                            fontFamily: "Manrope_500Medium",
+                                            fontSize: 15,
+                                            textAlign: "center",
+                                        }}
+                                        placeholderTextColor="#666"
+                                        autoCapitalize="characters"
+                                    />
+                                </View>
+                            </View>
+                            <View style={{ flexDirection: "row", gap: 12 }}>
+                                <Pressable
+                                    onPress={() => setEditingName(false)}
+                                    style={{
+                                        flex: 1,
+                                        backgroundColor: "#262626",
+                                        borderRadius: 12,
+                                        height: 48,
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        borderWidth: 1,
+                                        borderColor: "#333",
+                                    }}
+                                >
+                                    <Text
+                                        style={{
+                                            fontFamily: "Manrope_600SemiBold",
+                                            color: "#999",
+                                            fontSize: 15,
+                                        }}
+                                    >
+                                        Cancel
+                                    </Text>
+                                </Pressable>
+                                <Pressable
+                                    onPress={handleSaveName}
+                                    style={{
+                                        flex: 1,
+                                        backgroundColor: "#FF9933",
+                                        borderRadius: 12,
+                                        height: 48,
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                    }}
+                                >
+                                    <Text
+                                        style={{
+                                            fontFamily: "BricolageGrotesque_700Bold",
+                                            color: "#0f0f0f",
+                                            fontSize: 15,
+                                        }}
+                                    >
+                                        Save
+                                    </Text>
+                                </Pressable>
+                            </View>
+                        </View>
+                    </View>
+                )}
             </SafeAreaView>
         </View>
     );

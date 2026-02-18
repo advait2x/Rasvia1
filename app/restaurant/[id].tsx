@@ -133,7 +133,7 @@ export default function RestaurantDetail() {
     const translateY = interpolate(
       scrollY.value,
       [0, SCROLL_THRESHOLD],
-      [0, -SCROLL_THRESHOLD * 0.5],
+      [0, -SCROLL_THRESHOLD * 0.3],
       Extrapolation.CLAMP,
     );
     const opacity = interpolate(

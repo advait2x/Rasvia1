@@ -18,7 +18,8 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { WaitBadge } from "@/components/WaitBadge";
-import { restaurants, type Restaurant } from "@/data/mockData";
+import { supabase } from "@/lib/supabase";
+import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant } from "@/lib/restaurant-types";
 
 // --- Trie-based prefix search for efficient matching ---
 
@@ -31,7 +32,7 @@ function createTrieNode(): TrieNode {
   return { children: new Map(), restaurantIds: new Set() };
 }
 
-function buildTrie(items: Restaurant[]): TrieNode {
+function buildTrie(items: UIRestaurant[]): TrieNode {
   const root = createTrieNode();
 
   for (const restaurant of items) {
@@ -73,9 +74,6 @@ function searchTrie(root: TrieNode, query: string): Set<string> {
   return node.restaurantIds;
 }
 
-const restaurantTrie = buildTrie(restaurants);
-const restaurantMap = new Map(restaurants.map((r) => [r.id, r]));
-
 function parseDistance(d: string): number {
   return parseFloat(d.replace(/[^0-9.]/g, "")) || 0;
 }
@@ -92,6 +90,36 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("none");
   const inputRef = useRef<TextInput>(null);
+  
+  // Fetch restaurants from Supabase
+  const [restaurants, setRestaurants] = useState<UIRestaurant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [restaurantTrie, setRestaurantTrie] = useState<TrieNode>(createTrieNode());
+  const [restaurantMap, setRestaurantMap] = useState<Map<string, UIRestaurant>>(new Map());
+
+  useEffect(() => {
+    async function fetchRestaurants() {
+      try {
+        const { data, error } = await supabase
+          .from('restaurants')
+          .select('*')
+          .order('current_wait_time', { ascending: true });
+
+        if (error) throw error;
+        if (data) {
+          const uiRestaurants = data.map((r: SupabaseRestaurant) => mapSupabaseToUI(r));
+          setRestaurants(uiRestaurants);
+          setRestaurantTrie(buildTrie(uiRestaurants));
+          setRestaurantMap(new Map(uiRestaurants.map((r) => [r.id, r])));
+        }
+      } catch (error) {
+        console.error('Error fetching restaurants for search:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchRestaurants();
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -100,8 +128,9 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     return () => clearTimeout(timer);
   }, []);
 
+
   const results = useMemo(() => {
-    let list: Restaurant[];
+    let list: UIRestaurant[];
     if (!query.trim()) {
       list = [...restaurants];
     } else {
@@ -118,7 +147,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     }
 
     return list;
-  }, [query, sortBy]);
+  }, [query, sortBy, restaurants, restaurantTrie, restaurantMap]);
 
   const handleResultPress = useCallback(
     (id: string) => {
@@ -391,7 +420,7 @@ function SearchResultCard({
   index,
   onPress,
 }: {
-  restaurant: Restaurant;
+  restaurant: UIRestaurant;
   index: number;
   onPress: () => void;
 }) {
