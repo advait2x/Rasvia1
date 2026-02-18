@@ -106,7 +106,7 @@ export function InAppNotification({
                 return {
                     icon: AlertCircle,
                     color: "#EF4444",
-                    bgColor: "rgba(239, 68, 68, 0.4)",
+                    bgColor: "rgba(239, 68, 68, 1)",
                     borderColor: "rgba(239, 68, 68, 0.5)",
                 };
         }
@@ -148,40 +148,25 @@ export function InAppNotification({
                         width: 36,
                         height: 36,
                         borderRadius: 18,
-                        backgroundColor: `${config.color}30`,
+                        backgroundColor: "rgba(255, 255, 255, 0.25)",
                         alignItems: "center",
                         justifyContent: "center",
                         marginRight: 12,
                     }}
                 >
-                    <Icon size={20} color={config.color} />
+                    <Icon size={20} color="#FFFFFF" />
                 </View>
                 <Text
                     style={{
                         flex: 1,
                         fontFamily: "Manrope_600SemiBold",
                         color: "#f5f5f5",
-                        fontSize: 14,
-                        lineHeight: 20,
+                        fontSize: 16,
+                        lineHeight: 22,
                     }}
                 >
                     {message}
                 </Text>
-                <Pressable
-                    onPress={handleDismiss}
-                    hitSlop={8}
-                    style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 14,
-                        backgroundColor: "rgba(255, 255, 255, 0.1)",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginLeft: 8,
-                    }}
-                >
-                    <X size={16} color="#f5f5f5" />
-                </Pressable>
             </Animated.View>
         </GestureDetector>
     );

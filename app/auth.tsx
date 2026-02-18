@@ -55,7 +55,7 @@ export default function AuthScreen() {
             });
             return;
         }
-        
+
         if (isSignUp && (!firstName || !lastInitial)) {
             setNotification({
                 visible: true,
@@ -73,7 +73,7 @@ export default function AuthScreen() {
                     password,
                 });
                 if (error) throw error;
-                
+
                 // Create profile with name
                 if (data.user) {
                     const fullName = `${firstName.trim()} ${lastInitial.trim().toUpperCase()}.`;
@@ -101,7 +101,7 @@ export default function AuthScreen() {
             setNotification({
                 visible: true,
                 message: message.includes("already registered")
-                    ? "This account already exists. Please sign in instead."
+                    ? "This account already exists.\nPlease sign in instead."
                     : message,
                 type: "error",
             });
