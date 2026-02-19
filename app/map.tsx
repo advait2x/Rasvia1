@@ -41,9 +41,6 @@ const ZOOM_THRESHOLD = 0.04;
 // Clustering active only when zoomed in somewhat (approx < 8 miles span)
 const CLUSTERING_THRESHOLD = 0.12;
 
-// Clustering radius as a fraction of the visible latitude span
-const CLUSTER_RADIUS_FACTOR = 0.25;
-
 // Wait-status colors (matches WaitBadge)
 const STATUS_COLORS: Record<WaitStatus, string> = {
   green: "#22C55E",
@@ -126,8 +123,8 @@ function haversineDistance(
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -194,18 +191,8 @@ export default function MapScreen() {
     };
   }, []);
 
-  // ==============================
-  // Preload restaurant images
-  // ==============================
-  useEffect(() => {
-    if (restaurants.length > 0) {
-      restaurants.forEach((r) => {
-        if (r.image) {
-          Image.prefetch(r.image).catch(() => {});
-        }
-      });
-    }
-  }, [restaurants]);
+  // Image prefetch removed — was loading ALL restaurant images into memory
+  // on every data change. Images load on-demand now.
 
   // ==============================
   // Get user location
@@ -235,7 +222,8 @@ export default function MapScreen() {
     })();
   }, []);
 
-  // Restaurants with valid coordinates
+  // Restaurants with valid coordinates — this is the ONLY marker list.
+  // It changes only when restaurant data changes (from Supabase), never during zoom.
   const mappableRestaurants = useMemo(
     () => restaurants.filter((r) => r.lat != null && r.long != null),
     [restaurants]
@@ -314,7 +302,7 @@ export default function MapScreen() {
     } else {
       // Prefetch images before showing overlay
       topNearby.forEach((r) => {
-        if (r.image) Image.prefetch(r.image).catch(() => {});
+        if (r.image) Image.prefetch(r.image).catch(() => { });
       });
       setNearbyRestaurants(topNearby);
       // setTimeout 100ms to ensure map marker press event clears before state update
@@ -322,9 +310,9 @@ export default function MapScreen() {
     }
   }, [userLocation, mappableRestaurants]);
 
-  // Region change: track zoom level
-  const handleRegionChange = useCallback((newRegion: Region) => {
-    setRegion(newRegion);
+  // Track zoom level ONLY — does NOT change the marker list.
+  // Markers stay permanently mounted, only their visual children swap.
+  const handleRegionChangeComplete = useCallback((newRegion: Region) => {
     setIsZoomedIn(newRegion.latitudeDelta < ZOOM_THRESHOLD);
   }, []);
 
@@ -372,95 +360,37 @@ export default function MapScreen() {
         ref={mapRef}
         style={{ flex: 1 }}
         initialRegion={region}
-        onRegionChange={handleRegionChange}
+        onRegionChangeComplete={handleRegionChangeComplete}
         showsUserLocation
         showsMyLocationButton={false}
-        customMapStyle={darkMapStyle}
         userInterfaceStyle="dark"
       >
-        {/* Conditional Clustering: Active only when zoomed in closer than threshold (~5-6 miles) */}
-        {region.latitudeDelta < CLUSTERING_THRESHOLD
-          ? // =================================
-            // CLUSTERING ACTIVE
-            // =================================
-            clusterRestaurants(mappableRestaurants, region.latitudeDelta).map(
-              (cluster) =>
-                cluster.restaurants.length === 1 ? (
-                  // Single Restaurant (Dot or Card based on Zoom)
-                  <Marker
-                    key={`single-${cluster.id}`}
-                    coordinate={{
-                      latitude: cluster.latitude,
-                      longitude: cluster.longitude,
-                    }}
-                    onPress={() => {
-                      if (isZoomedIn) {
-                        // Start navigation directly if zoomed in (showing card)
-                        handleRestaurantPress(cluster.restaurants[0]);
-                      } else {
-                        // Show popup if zoomed out (showing dot)
-                        handleDotPress(cluster.restaurants[0]);
-                      }
-                    }}
-                    tracksViewChanges={false}
-                  >
-                    {isZoomedIn ? (
-                      <ZoomedInMarker restaurant={cluster.restaurants[0]} />
-                    ) : (
-                      <DotMarker
-                        status={cluster.restaurants[0].waitStatus}
-                        latDelta={region.latitudeDelta}
-                      />
-                    )}
-                  </Marker>
-                ) : (
-                  // Cluster Group (Always Circle)
-                  <Marker
-                    key={`cluster-${cluster.id}`}
-                    coordinate={{
-                      latitude: cluster.latitude,
-                      longitude: cluster.longitude,
-                    }}
-                    onPress={() => {
-                      if (Platform.OS !== "web") {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }
-                      // Prefetch images for this cluster
-                      cluster.restaurants.forEach((r) => {
-                        if (r.image) Image.prefetch(r.image).catch(() => {});
-                      });
-                      setNearbyRestaurants(cluster.restaurants);
-                      setTimeout(() => setShowNearbyList(true), 100);
-                    }}
-                    tracksViewChanges={false}
-                  >
-                    <ClusterMarker restaurants={cluster.restaurants} />
-                  </Marker>
-                )
-            )
-          : // =================================
-            // ZOOMED OUT FAR: Individual Dots (No Clustering)
-            // =================================
-            mappableRestaurants.map((restaurant) => (
-              <Marker
-                key={`dot-${restaurant.id}`}
-                coordinate={{
-                  latitude: restaurant.lat!,
-                  longitude: restaurant.long!,
-                }}
-                onPress={() => handleDotPress(restaurant)}
-                tracksViewChanges={false}
-              >
-                <DotMarker
-                  status={restaurant.waitStatus}
-                  latDelta={region.latitudeDelta}
-                />
-              </Marker>
-            ))}
+        {/* All restaurants permanently mounted — NEVER changes during zoom.
+            Children swap (Dot ↔ Card) but the Marker instances stay. */}
+        {mappableRestaurants.map((restaurant) => (
+          <Marker
+            key={restaurant.id}
+            coordinate={{
+              latitude: restaurant.lat!,
+              longitude: restaurant.long!,
+            }}
+            tracksViewChanges={isZoomedIn}
+            onPress={() => isZoomedIn
+              ? handleRestaurantPress(restaurant)
+              : handleDotPress(restaurant)
+            }
+          >
+            {isZoomedIn ? (
+              <ZoomedInMarker restaurant={restaurant} />
+            ) : (
+              <DotMarker status={restaurant.waitStatus} />
+            )}
+          </Marker>
+        ))}
       </MapView>
 
-      {/* Popup card when a pin is tapped (zoomed out) */}
-      {!isZoomedIn && selectedRestaurant && (
+      {/* Popup card when a pin is tapped */}
+      {selectedRestaurant && (
         <Animated.View
           entering={FadeInUp.duration(250)}
           style={{
@@ -471,7 +401,7 @@ export default function MapScreen() {
           }}
         >
           <Pressable
-            onPress={() => handleRestaurantPress(selectedRestaurant)}
+            onPress={() => router.push(`/restaurant/${selectedRestaurant.id}` as any)}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -823,22 +753,15 @@ function ZoomedInMarker({ restaurant }: { restaurant: UIRestaurant }) {
 // outer = wait color, middle = black, center = white
 // Size scales with zoom level
 // ==========================================
-function DotMarker({ status, latDelta }: { status: WaitStatus; latDelta: number }) {
-  // Scale: pins stay large until quite zoomed out
-  // latDelta range: ~0.04 (threshold) to ~0.5+ (zoomed way out)
-  // At threshold (0.04) => scale 1.0, at 0.2 => ~0.7, clamp min 0.7
-  const scale = Math.max(0.7, Math.min(1.0, 0.04 / Math.max(latDelta, 0.04)));
-  const outerSize = Math.round(22 * scale);
-  const middleSize = Math.round(14 * scale);
-  const innerSize = Math.round(6 * scale);
-
+function DotMarker({ status }: { status: WaitStatus }) {
+  // Fixed size — no dynamic props means the marker bitmap is never re-rasterized
   return (
     <View
       style={{
-        width: outerSize,
-        height: outerSize,
-        borderRadius: outerSize / 2,
-        backgroundColor: STATUS_COLORS[status], // outer ring color
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: STATUS_COLORS[status],
         alignItems: "center",
         justifyContent: "center",
         shadowColor: "#000",
@@ -851,9 +774,9 @@ function DotMarker({ status, latDelta }: { status: WaitStatus; latDelta: number 
       {/* Black middle ring */}
       <View
         style={{
-          width: middleSize,
-          height: middleSize,
-          borderRadius: middleSize / 2,
+          width: 12,
+          height: 12,
+          borderRadius: 6,
           backgroundColor: "#111111",
           alignItems: "center",
           justifyContent: "center",
@@ -862,9 +785,9 @@ function DotMarker({ status, latDelta }: { status: WaitStatus; latDelta: number 
         {/* White center dot */}
         <View
           style={{
-            width: innerSize,
-            height: innerSize,
-            borderRadius: innerSize / 2,
+            width: 5,
+            height: 5,
+            borderRadius: 2.5,
             backgroundColor: "#ffffff",
           }}
         />
@@ -893,7 +816,7 @@ function NearbyListOverlay({
   // Prefetch images for the overlay restaurants
   useEffect(() => {
     restaurants.forEach((r) => {
-      if (r.image) Image.prefetch(r.image).catch(() => {});
+      if (r.image) Image.prefetch(r.image).catch(() => { });
     });
   }, [restaurants]);
 
@@ -1244,44 +1167,3 @@ function ClusterMarker({
   );
 }
 
-// ==========================================
-// Dark map style (Google Maps)
-// ==========================================
-const darkMapStyle = [
-  { elementType: "geometry", stylers: [{ color: "#1d1d1d" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#8a8a8a" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#1d1d1d" }] },
-  {
-    featureType: "administrative",
-    elementType: "geometry",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "poi",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry.fill",
-    stylers: [{ color: "#2c2c2c" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry.stroke",
-    stylers: [{ color: "#1d1d1d" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "geometry.fill",
-    stylers: [{ color: "#3a3a3a" }],
-  },
-  {
-    featureType: "transit",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "water",
-    elementType: "geometry",
-    stylers: [{ color: "#0e0e0e" }],
-  },
-];
