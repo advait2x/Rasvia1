@@ -378,6 +378,7 @@ export default function MapScreen() {
       });
       setNearbyRestaurants(clusterRestaurants);
       // setTimeout 100ms to ensure map marker press event clears before state update
+      setSelectedRestaurant(null)
       setTimeout(() => setShowNearbyList(true), 100);
     }
   }, [userLocation, mappableRestaurants]);
@@ -419,7 +420,13 @@ export default function MapScreen() {
     if (Platform.OS !== "web") {
       Haptics.selectionAsync();
     }
+    setShowNearbyList(false);
     setSelectedRestaurant(restaurant);
+  }, []);
+
+  const handleMapInteraction = useCallback(() => {
+    setSelectedRestaurant(null);
+    setShowNearbyList(false);
   }, []);
 
   // ==============================
@@ -448,6 +455,7 @@ export default function MapScreen() {
         style={{ flex: 1 }}
         initialRegion={region}
         onRegionChangeComplete={handleRegionChangeComplete}
+        onPanDrag={handleMapInteraction}
         showsUserLocation
         showsMyLocationButton={false}
         userInterfaceStyle="dark"
