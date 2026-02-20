@@ -153,11 +153,11 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={rasviaTheme}>
           <StatusBar style="light" />
-          <LocationProvider>
-            <AuthProvider>
+          <AuthProvider>
+            <LocationProvider>
               <AuthGate />
-            </AuthProvider>
-          </LocationProvider>
+            </LocationProvider>
+          </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

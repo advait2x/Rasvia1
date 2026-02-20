@@ -644,7 +644,16 @@ export default function RestaurantDetail() {
           </View>
 
           {/* Address */}
-          <View className="flex-row items-center mt-4">
+          <Pressable 
+            className="flex-row items-center mt-4"
+            onPress={() => {
+              if (restaurant.lat && restaurant.long) {
+                router.push(
+                  `/map?targetLat=${restaurant.lat}&targetLng=${restaurant.long}&restaurantId=${restaurant.id}` as any
+                );
+              }
+            }}
+          >
             <MapPin size={13} color="#999999" />
             <Text
               style={{
@@ -652,11 +661,12 @@ export default function RestaurantDetail() {
                 color: "#999999",
                 fontSize: 13,
                 marginLeft: 4,
+                textDecorationLine: "underline",
               }}
             >
               {restaurant.address} · {restaurant.distance}
             </Text>
-          </View>
+          </Pressable>
 
           {/* Description */}
           <Text

@@ -461,7 +461,7 @@ export default function DiscoveryFeed() {
                 .filter((cuisine) => {
                   // Only show cuisines that have at least one restaurant
                   return restaurants.some(
-                    (r) => r.cuisineCategory?.toLowerCase() === cuisine.label.toLowerCase()
+                    (r) => r.cuisine?.toLowerCase() === cuisine.label.toLowerCase()
                   );
                 })
                 .map((cuisine, i) => (

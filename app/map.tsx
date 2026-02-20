@@ -20,7 +20,7 @@ import {
   PanResponder,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import MapView, { Marker, Callout, Region } from "react-native-maps";
 import * as Location from "expo-location";
 import {
@@ -32,9 +32,11 @@ import {
   MapPin,
   Search,
   X,
+  Home,
+  ArrowUpDown,
 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
-import Animated, { FadeIn, FadeInDown, FadeInUp, FadeOut } from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown, FadeInUp, FadeOut, LinearTransition } from "react-native-reanimated";
 import { supabase } from "@/lib/supabase";
 import {
   type SupabaseRestaurant,
@@ -42,6 +44,7 @@ import {
   type WaitStatus,
   mapSupabaseToUI,
 } from "@/lib/restaurant-types";
+import { useLocation } from "@/lib/location-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -147,10 +150,11 @@ export default function MapScreen() {
   // State
   const [restaurants, setRestaurants] = useState<UIRestaurant[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userLocation, setUserLocation] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
+  
+  const { userCoords: userLocation, isLiveLocationEnabled } = useLocation();
+  const { targetLat, targetLng, restaurantId } = useLocalSearchParams<{ targetLat?: string; targetLng?: string; restaurantId?: string }>();
+  const hasCenteredRef = useRef(false);
+
   const [region, setRegion] = useState<Region>(DEFAULT_REGION);
   const [isZoomedIn, setIsZoomedIn] = useState(false);
   const [selectedRestaurant, setSelectedRestaurant] =
@@ -214,32 +218,41 @@ export default function MapScreen() {
   // on every data change. Images load on-demand now.
 
   // ==============================
-  // Get user location
+  // Center Map & Focus logic
   // ==============================
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        console.warn("Location permission denied");
-        return;
-      }
-      const loc = await Location.getCurrentPositionAsync({});
-      const coords = {
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      };
-      setUserLocation(coords);
+    if (hasCenteredRef.current) return;
 
-      // Center map on user
+    if (targetLat && targetLng) {
+      const target: Region = {
+        latitude: parseFloat(targetLat),
+        longitude: parseFloat(targetLng),
+        latitudeDelta: 0.008,
+        longitudeDelta: 0.008,
+      };
+      setRegion(target);
+      setTimeout(() => mapRef.current?.animateToRegion(target, 600), 500);
+      hasCenteredRef.current = true;
+    } else if (userLocation) {
       const initialRegion: Region = {
-        ...coords,
+        ...userLocation,
         latitudeDelta: 0.015,
         longitudeDelta: 0.015,
       };
       setRegion(initialRegion);
-      mapRef.current?.animateToRegion(initialRegion, 600);
-    })();
-  }, []);
+      setTimeout(() => mapRef.current?.animateToRegion(initialRegion, 600), 500);
+      hasCenteredRef.current = true;
+    }
+  }, [userLocation, targetLat, targetLng]);
+
+  useEffect(() => {
+    if (restaurantId && restaurants.length > 0) {
+      const targetRest = restaurants.find((r) => r.id === restaurantId);
+      if (targetRest && !selectedRestaurant) {
+         setSelectedRestaurant(targetRest);
+      }
+    }
+  }, [restaurantId, restaurants]);
 
   // Recalculate distances when user location arrives/changes
   const restaurantsWithDistance = useMemo(() => {
@@ -382,6 +395,7 @@ export default function MapScreen() {
     mapRef.current?.animateToRegion(fitRegion, 800);
 
     if (clusterRestaurants.length === 1) {
+      setShowNearbyList(false);
       setSelectedRestaurant(clusterRestaurants[0]);
     } else {
       // Prefetch images before showing overlay
@@ -468,10 +482,30 @@ export default function MapScreen() {
         initialRegion={region}
         onRegionChangeComplete={handleRegionChangeComplete}
         onPanDrag={handleMapInteraction}
-        showsUserLocation
+        showsUserLocation={isLiveLocationEnabled}
         showsMyLocationButton={false}
         userInterfaceStyle="dark"
       >
+        {/* User Home Location Pin (if live disabled) */}
+        {!isLiveLocationEnabled && userLocation && (
+          <Marker coordinate={userLocation} zIndex={100} tracksViewChanges={false}>
+             <View style={{
+               backgroundColor: "#FF9933",
+               padding: 6,
+               borderRadius: 16,
+               borderWidth: 2,
+               borderColor: "#0f0f0f",
+               shadowColor: "#000",
+               shadowOffset: { width: 0, height: 2 },
+               shadowOpacity: 0.3,
+               shadowRadius: 4,
+               elevation: 5,
+             }}>
+               <Home size={16} color="#0f0f0f" strokeWidth={2.5} />
+             </View>
+          </Marker>
+        )}
+
         {/* All restaurants permanently mounted — NEVER changes during zoom.
             Children swap (Dot ↔ Card) but the Marker instances stay. */}
         {mappableRestaurants.map((restaurant) => (
@@ -1145,15 +1179,30 @@ function NearbyListOverlay({
           marginBottom: 8,
         }}
       >
-        <Text
-          style={{
-            fontFamily: "BricolageGrotesque_700Bold",
-            color: "#f5f5f5",
-            fontSize: 18,
-          }}
-        >
-          Nearby Restaurants
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Text
+            style={{
+              fontFamily: "BricolageGrotesque_700Bold",
+              color: "#f5f5f5",
+              fontSize: 18,
+            }}
+          >
+            Nearby Restaurants
+          </Text>
+          <View style={{ 
+            marginLeft: 8, 
+            backgroundColor: "rgba(255,153,51,0.15)", 
+            borderWidth: 1, 
+            borderColor: "#FF9933", 
+            borderRadius: 6, 
+            paddingHorizontal: 6, 
+            paddingVertical: 2 
+          }}>
+            <Text style={{ color: "#FF9933", fontFamily: "JetBrainsMono_600SemiBold", fontSize: 12 }}>
+              {restaurants.length}
+            </Text>
+          </View>
+        </View>
         <Pressable
           onPress={dismiss}
           style={{
@@ -1405,7 +1454,11 @@ function MapSearchOverlay({
 }) {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
+  type SortOption = "none" | "waitTime" | "distance";
+  const [sortBy, setSortBy] = useState<SortOption>("none");
   const inputRef = useRef<TextInput>(null);
+
+  const parseDistance = (d: string) => parseFloat(d.replace(/[^0-9.]/g, "")) || 0;
 
   useEffect(() => {
     const timer = setTimeout(() => inputRef.current?.focus(), 300);
@@ -1413,14 +1466,24 @@ function MapSearchOverlay({
   }, []);
 
   const results = useMemo(() => {
-    if (!query.trim()) return restaurants;
-    const q = query.toLowerCase().trim();
-    return restaurants.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.cuisine.toLowerCase().includes(q)
-    );
-  }, [query, restaurants]);
+    let list = [...restaurants];
+    if (query.trim()) {
+      const q = query.toLowerCase().trim();
+      list = list.filter(
+        (r) =>
+          r.name.toLowerCase().includes(q) ||
+          r.cuisine.toLowerCase().includes(q)
+      );
+    }
+    
+    if (sortBy === "waitTime") {
+      list.sort((a, b) => a.waitTime - b.waitTime);
+    } else if (sortBy === "distance") {
+      list.sort((a, b) => parseDistance(a.distance || "0") - parseDistance(b.distance || "0"));
+    }
+    
+    return list;
+  }, [query, sortBy, restaurants]);
 
   return (
     <Animated.View
@@ -1506,6 +1569,85 @@ function MapSearchOverlay({
             </Text>
           </Pressable>
         </View>
+
+        {/* Sort Bar */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginTop: 12,
+          }}
+        >
+          <ArrowUpDown size={14} color="#999999" />
+          <Text
+            style={{
+              fontFamily: "Manrope_500Medium",
+              color: "#999999",
+              fontSize: 12,
+              marginLeft: 6,
+              marginRight: 10,
+            }}
+          >
+            Sort by
+          </Text>
+          <Pressable
+            onPress={() => {
+              if (Platform.OS !== "web") Haptics.selectionAsync();
+              setSortBy((prev) => (prev === "waitTime" ? "none" : "waitTime"));
+            }}
+            style={{
+              backgroundColor: sortBy === "waitTime" ? "rgba(255, 153, 51, 0.2)" : "#1a1a1a",
+              borderRadius: 20,
+              paddingHorizontal: 14,
+              paddingVertical: 7,
+              marginRight: 8,
+              borderWidth: 1,
+              borderColor: sortBy === "waitTime" ? "#FF9933" : "#2a2a2a",
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Clock size={12} color={sortBy === "waitTime" ? "#FF9933" : "#999999"} />
+              <Text
+                style={{
+                  fontFamily: "Manrope_600SemiBold",
+                  color: sortBy === "waitTime" ? "#FF9933" : "#999999",
+                  fontSize: 12,
+                  marginLeft: 5,
+                }}
+              >
+                Wait Time
+              </Text>
+            </View>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              if (Platform.OS !== "web") Haptics.selectionAsync();
+              setSortBy((prev) => (prev === "distance" ? "none" : "distance"));
+            }}
+            style={{
+              backgroundColor: sortBy === "distance" ? "rgba(255, 153, 51, 0.2)" : "#1a1a1a",
+              borderRadius: 20,
+              paddingHorizontal: 14,
+              paddingVertical: 7,
+              borderWidth: 1,
+              borderColor: sortBy === "distance" ? "#FF9933" : "#2a2a2a",
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <MapPin size={12} color={sortBy === "distance" ? "#FF9933" : "#999999"} />
+              <Text
+                style={{
+                  fontFamily: "Manrope_600SemiBold",
+                  color: sortBy === "distance" ? "#FF9933" : "#999999",
+                  fontSize: 12,
+                  marginLeft: 5,
+                }}
+              >
+                Distance
+              </Text>
+            </View>
+          </Pressable>
+        </View>
       </View>
 
       {/* Results */}
@@ -1571,7 +1713,7 @@ function MapSearchOverlay({
             {results.map((r, index) => (
               <Animated.View
                 key={r.id}
-                entering={FadeInDown.delay(index * 30).duration(200)}
+                entering={FadeInDown.duration(200)}
               >
                 <Pressable
                   onPress={() => {
