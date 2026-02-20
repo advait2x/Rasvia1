@@ -30,13 +30,16 @@ import { supabase } from "@/lib/supabase";
 import {
   type SupabaseRestaurant,
   type UIRestaurant,
-  mapSupabaseToUI
+  mapSupabaseToUI,
+  haversineDistance,
 } from "@/lib/restaurant-types";
+import { useLocation } from "@/lib/location-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function DiscoveryFeed() {
   const router = useRouter();
+  const { userCoords } = useLocation();
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [showSearch, setShowSearch] = useState(false);
 
@@ -61,7 +64,7 @@ export default function DiscoveryFeed() {
         (payload) => {
           console.log('Realtime Update:', payload);
           // Instant UI update without refreshing
-          const updatedRestaurant = mapSupabaseToUI(payload.new as SupabaseRestaurant);
+          const updatedRestaurant = mapSupabaseToUI(payload.new as SupabaseRestaurant, userCoords);
           setRestaurants((currentData) =>
             currentData.map((item) =>
               item.id === updatedRestaurant.id ? updatedRestaurant : item
@@ -94,7 +97,7 @@ export default function DiscoveryFeed() {
         throw error;
       }
       if (data) {
-        const uiRestaurants = data.map(mapSupabaseToUI);
+        const uiRestaurants = data.map((r: SupabaseRestaurant) => mapSupabaseToUI(r, userCoords));
         setRestaurants(uiRestaurants);
       }
     } catch (error) {
@@ -103,6 +106,20 @@ export default function DiscoveryFeed() {
       setLoading(false);
     }
   }
+
+  // Recalculate distances when userCoords arrives after initial fetch
+  useEffect(() => {
+    if (!userCoords) return;
+    setRestaurants((prev) =>
+      prev.map((r) => {
+        if (r.lat == null || r.long == null) return r;
+        const dist = haversineDistance(
+          userCoords.latitude, userCoords.longitude, r.lat, r.long,
+        );
+        return { ...r, distance: `${dist.toFixed(1)} mi` };
+      }),
+    );
+  }, [userCoords]);
 
   const filteredRestaurants = restaurants.filter((r) => {
     if (activeFilter === "all") return true;

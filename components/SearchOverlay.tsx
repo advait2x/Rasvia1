@@ -19,7 +19,8 @@ import Animated, {
 import * as Haptics from "expo-haptics";
 import { WaitBadge } from "@/components/WaitBadge";
 import { supabase } from "@/lib/supabase";
-import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant } from "@/lib/restaurant-types";
+import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant, haversineDistance } from "@/lib/restaurant-types";
+import { useLocation } from "@/lib/location-context";
 
 // --- Trie-based prefix search for efficient matching ---
 
@@ -86,11 +87,12 @@ interface SearchOverlayProps {
 
 export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const router = useRouter();
+  const { userCoords } = useLocation();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("none");
   const inputRef = useRef<TextInput>(null);
-  
+
   // Fetch restaurants from Supabase
   const [restaurants, setRestaurants] = useState<UIRestaurant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,7 +109,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
 
         if (error) throw error;
         if (data) {
-          const uiRestaurants = data.map((r: SupabaseRestaurant) => mapSupabaseToUI(r));
+          const uiRestaurants = data.map((r: SupabaseRestaurant) => mapSupabaseToUI(r, userCoords));
           setRestaurants(uiRestaurants);
           setRestaurantTrie(buildTrie(uiRestaurants));
           setRestaurantMap(new Map(uiRestaurants.map((r) => [r.id, r])));
@@ -120,6 +122,22 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
     }
     fetchRestaurants();
   }, []);
+
+  // Recalculate distances when userCoords arrives after initial fetch
+  useEffect(() => {
+    if (!userCoords) return;
+    setRestaurants((prev) => {
+      const updated = prev.map((r) => {
+        if (r.lat == null || r.long == null) return r;
+        const dist = haversineDistance(
+          userCoords.latitude, userCoords.longitude, r.lat, r.long,
+        );
+        return { ...r, distance: `${dist.toFixed(1)} mi` };
+      });
+      setRestaurantMap(new Map(updated.map((r) => [r.id, r])));
+      return updated;
+    });
+  }, [userCoords]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

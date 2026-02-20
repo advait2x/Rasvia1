@@ -66,31 +66,93 @@ export function getWaitStatus(waitTime: number): WaitStatus {
 }
 
 /**
- * Map Supabase restaurant data to UI format
+ * Haversine distance in miles between two lat/long points
  */
-export function mapSupabaseToUI(restaurant: SupabaseRestaurant): UIRestaurant {
+export function haversineDistance(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+): number {
+    const R = 3958.8; // Earth radius in miles
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Map Supabase restaurant data to UI format.
+ * Pass userCoords to get live distance calculation.
+ *
+ * STRICT coordinate handling:
+ *  - Force Number() coercion (Supabase numeric columns can arrive as strings)
+ *  - Reject NaN / zero coordinates
+ *  - Log mismatches for debugging
+ */
+export function mapSupabaseToUI(
+    restaurant: SupabaseRestaurant,
+    userCoords?: { latitude: number; longitude: number } | null,
+): UIRestaurant {
     const waitTime = restaurant.current_wait_time;
     const cuisineTags = restaurant.cuisine_tags || [];
+
+    // --- Strict coordinate parsing ---
+    const rawLat = restaurant.lat;
+    const rawLong = restaurant.long;
+    const lat = rawLat != null ? Number(rawLat) : null;
+    const lng = rawLong != null ? Number(rawLong) : null;
+
+    // Validate: reject NaN or (0,0) coordinates
+    const hasValidCoords =
+        lat !== null &&
+        lng !== null &&
+        !Number.isNaN(lat) &&
+        !Number.isNaN(lng) &&
+        !(lat === 0 && lng === 0);
+
+    if ((rawLat != null || rawLong != null) && !hasValidCoords) {
+        console.warn(
+            `⚠️ Invalid coordinates for restaurant "${restaurant.name}" (ID: ${restaurant.id}):`,
+            { rawLat, rawLong, parsedLat: lat, parsedLng: lng }
+        );
+    }
+
+    // Calculate distance strictly
+    let distance = '—';
+    if (userCoords && hasValidCoords) {
+        const dist = haversineDistance(
+            userCoords.latitude,
+            userCoords.longitude,
+            lat!,
+            lng!,
+        );
+        distance = `${dist.toFixed(1)} mi`;
+    }
 
     return {
         id: restaurant.id.toString(),
         name: restaurant.name,
         cuisine: cuisineTags.join(' • ') || 'Restaurant',
         rating: Number(restaurant.rating) || 0,
-        reviewCount: 0, // Not in database yet - can add later
-        distance: '0.5 mi', // TODO: Calculate from lat/long when available
+        reviewCount: 0,
+        distance,
         waitTime,
         waitStatus: getWaitStatus(waitTime),
-        capacity: 0, // Not in database - can add later
-        partySize: 0, // Not in database - user preference
+        capacity: 0,
+        partySize: 0,
         image: restaurant.image_url || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80',
         priceRange: restaurant.price_range || '$$',
         address: restaurant.address || '',
         description: restaurant.description || '',
         tags: cuisineTags,
-        queueLength: Math.ceil(waitTime / 5), // Rough estimate: 1 party per 5 min
-        lat: restaurant.lat ?? null,
-        long: restaurant.long ?? null,
+        queueLength: Math.ceil(waitTime / 5),
+        lat: hasValidCoords ? lat : null,
+        long: hasValidCoords ? lng : null,
     };
 }
 

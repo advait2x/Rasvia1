@@ -135,8 +135,8 @@ function haversineDistance(
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -180,7 +180,7 @@ export default function MapScreen() {
 
         if (error) throw error;
         if (data) {
-          setRestaurants(data.map(mapSupabaseToUI));
+          setRestaurants(data.map((r: SupabaseRestaurant) => mapSupabaseToUI(r, userLocation)));
         }
       } catch (err) {
         console.error("Map: error fetching restaurants:", err);
@@ -197,7 +197,7 @@ export default function MapScreen() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "restaurants" },
         (payload) => {
-          const updated = mapSupabaseToUI(payload.new as SupabaseRestaurant);
+          const updated = mapSupabaseToUI(payload.new as SupabaseRestaurant, userLocation);
           setRestaurants((prev) =>
             prev.map((r) => (r.id === updated.id ? updated : r)),
           );
@@ -241,11 +241,23 @@ export default function MapScreen() {
     })();
   }, []);
 
+  // Recalculate distances when user location arrives/changes
+  const restaurantsWithDistance = useMemo(() => {
+    if (!userLocation) return restaurants;
+    return restaurants.map((r) => {
+      if (r.lat == null || r.long == null) return r;
+      const dist = haversineDistance(
+        userLocation.latitude, userLocation.longitude, r.lat, r.long,
+      );
+      return { ...r, distance: `${dist.toFixed(1)} mi` };
+    });
+  }, [restaurants, userLocation]);
+
   // Restaurants with valid coordinates — this is the ONLY marker list.
   // It changes only when restaurant data changes (from Supabase), never during zoom.
   const mappableRestaurants = useMemo(
-    () => restaurants.filter((r) => r.lat != null && r.long != null),
-    [restaurants],
+    () => restaurantsWithDistance.filter((r) => r.lat != null && r.long != null),
+    [restaurantsWithDistance]
   );
 
   // ==============================
@@ -374,7 +386,7 @@ export default function MapScreen() {
     } else {
       // Prefetch images before showing overlay
       clusterRestaurants.forEach((r) => {
-        if (r.image) Image.prefetch(r.image).catch(() => {});
+        if (r.image) Image.prefetch(r.image).catch(() => { });
       });
       setNearbyRestaurants(clusterRestaurants);
       // setTimeout 100ms to ensure map marker press event clears before state update
@@ -1036,7 +1048,7 @@ function NearbyListOverlay({
   // Prefetch images for the overlay restaurants
   useEffect(() => {
     restaurants.forEach((r) => {
-      if (r.image) Image.prefetch(r.image).catch(() => {});
+      if (r.image) Image.prefetch(r.image).catch(() => { });
     });
   }, [restaurants]);
 

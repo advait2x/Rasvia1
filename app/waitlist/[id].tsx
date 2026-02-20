@@ -37,12 +37,15 @@ import {
   type UIMenuItem,
   mapSupabaseToUI,
   mapMenuItemToUI,
+  haversineDistance,
 } from "@/lib/restaurant-types";
+import { useLocation } from "@/lib/location-context";
 import type { MenuItem } from "@/data/mockData";
 
 export default function WaitlistStatus() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { userCoords } = useLocation();
 
   // ==========================================
   // SUPABASE STATE
@@ -75,7 +78,7 @@ export default function WaitlistStatus() {
         }
 
         if (restData) {
-          const uiRestaurant = mapSupabaseToUI(restData as SupabaseRestaurant);
+          const uiRestaurant = mapSupabaseToUI(restData as SupabaseRestaurant, userCoords);
           setRestaurant(uiRestaurant);
           setPosition(uiRestaurant.queueLength);
           setEstimatedMinutes(uiRestaurant.waitTime);
@@ -120,6 +123,18 @@ export default function WaitlistStatus() {
 
     fetchData();
   }, [id]);
+
+  // Recalculate distance when userCoords arrives after initial fetch
+  useEffect(() => {
+    if (!userCoords) return;
+    setRestaurant((prev) => {
+      if (!prev || prev.lat == null || prev.long == null) return prev;
+      const dist = haversineDistance(
+        userCoords.latitude, userCoords.longitude, prev.lat, prev.long,
+      );
+      return { ...prev, distance: `${dist.toFixed(1)} mi` };
+    });
+  }, [userCoords]);
 
   // Simulate live queue updates
   useEffect(() => {

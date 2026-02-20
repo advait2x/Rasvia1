@@ -42,7 +42,9 @@ import {
   type UIMenuItem,
   mapSupabaseToUI,
   mapMenuItemToUI,
+  haversineDistance,
 } from "@/lib/restaurant-types";
+import { useLocation } from "@/lib/location-context";
 import {
   groupMembers,
   type CartItem,
@@ -56,6 +58,7 @@ const SCROLL_THRESHOLD = HERO_HEIGHT;
 export default function RestaurantDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { userCoords } = useLocation();
 
   // ==================================================
   // STATE MANAGEMENT - Supabase Data
@@ -90,7 +93,7 @@ export default function RestaurantDetail() {
 
       if (error) throw error;
       if (data) {
-        setRestaurant(mapSupabaseToUI(data as SupabaseRestaurant));
+        setRestaurant(mapSupabaseToUI(data as SupabaseRestaurant, userCoords));
       }
     } catch (error) {
       console.error('Error fetching restaurant:', error);
@@ -116,6 +119,18 @@ export default function RestaurantDetail() {
       console.error('Error fetching menu:', error);
     }
   }
+
+  // Recalculate distance when userCoords arrives after initial fetch
+  useEffect(() => {
+    if (!userCoords) return;
+    setRestaurant((prev) => {
+      if (!prev || prev.lat == null || prev.long == null) return prev;
+      const dist = haversineDistance(
+        userCoords.latitude, userCoords.longitude, prev.lat, prev.long,
+      );
+      return { ...prev, distance: `${dist.toFixed(1)} mi` };
+    });
+  }, [userCoords]);
 
   // ==================================================
   // SCROLL ANIMATIONS (Friend's UI improvement)

@@ -22,7 +22,8 @@ import Animated, {
 import * as Haptics from "expo-haptics";
 import { WaitBadge } from "@/components/WaitBadge";
 import { supabase } from "@/lib/supabase";
-import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant } from "@/lib/restaurant-types";
+import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant, haversineDistance } from "@/lib/restaurant-types";
+import { useLocation } from "@/lib/location-context";
 
 const cuisineEmojis: Record<string, string> = {
   "North Indian": "🍛",
@@ -36,6 +37,7 @@ const cuisineEmojis: Record<string, string> = {
 export default function CuisinePage() {
   const { name } = useLocalSearchParams<{ name: string }>();
   const router = useRouter();
+  const { userCoords } = useLocation();
   const [restaurants, setRestaurants] = useState<UIRestaurant[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -53,7 +55,7 @@ export default function CuisinePage() {
 
         if (error) throw error;
         if (data) {
-          const uiRestaurants = data.map((r: SupabaseRestaurant) => mapSupabaseToUI(r));
+          const uiRestaurants = data.map((r: SupabaseRestaurant) => mapSupabaseToUI(r, userCoords));
           setRestaurants(uiRestaurants);
         }
       } catch (error) {
@@ -64,6 +66,20 @@ export default function CuisinePage() {
     }
     fetchRestaurants();
   }, [decodedName]);
+
+  // Recalculate distances when userCoords arrives after initial fetch
+  useEffect(() => {
+    if (!userCoords) return;
+    setRestaurants((prev) =>
+      prev.map((r) => {
+        if (r.lat == null || r.long == null) return r;
+        const dist = haversineDistance(
+          userCoords.latitude, userCoords.longitude, r.lat, r.long,
+        );
+        return { ...r, distance: `${dist.toFixed(1)} mi` };
+      }),
+    );
+  }, [userCoords]);
 
   const matchingRestaurants = restaurants;
 

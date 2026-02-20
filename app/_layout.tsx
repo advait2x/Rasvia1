@@ -27,6 +27,7 @@ import {
   JetBrainsMono_600SemiBold,
 } from "@expo-google-fonts/jetbrains-mono";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { LocationProvider } from "@/lib/location-context";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -152,9 +153,11 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={rasviaTheme}>
           <StatusBar style="light" />
-          <AuthProvider>
-            <AuthGate />
-          </AuthProvider>
+          <LocationProvider>
+            <AuthProvider>
+              <AuthGate />
+            </AuthProvider>
+          </LocationProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
