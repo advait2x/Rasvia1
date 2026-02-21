@@ -1,0 +1,401 @@
+﻿node.exe : 2026-02-2
+1T22:11:53.047Z 
+expo:telemetry 
+Switching strategy 
+from detached to 
+instant
+At line:1 char:1
++ & "C:\Program File
+s\nodejs/node.exe" "
+C:\Users\blowi\AppDa
+ta\Roaming\ ...
++ ~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~
+    + CategoryInfo  
+            : NotS  
+  pecified: (2026   
+ -02-21T22:1...c    
+hed to instant:    
+String) [], Rem    
+oteException
+    + FullyQualifie 
+   dErrorId : Nati  
+  veCommandError
+ 
+2026-02-21T22:11:53.
+173Z expo:telemetry 
+Recording 1 event(s)
+2026-02-21T22:11:53.
+194Z expo:env 
+Loaded environment 
+variables from: C:\U
+sers\blowi\OneDrive\
+Documents\GitHub\Ras
+via1\.env
+2026-02-21T22:11:53.
+194Z expo:env C:\Use
+rs\blowi\OneDrive\Do
+cuments\GitHub\Rasvi
+a1\.env.development 
+does not exist, 
+skipping this env 
+file
+2026-02-21T22:11:53.
+194Z expo:env C:\Use
+rs\blowi\OneDrive\Do
+cuments\GitHub\Rasvi
+a1\.env.local does 
+not exist, skipping 
+this env file
+2026-02-21T22:11:53.
+194Z expo:env C:\Use
+rs\blowi\OneDrive\Do
+cuments\GitHub\Rasvi
+a1\.env.development.
+local does not 
+exist, skipping 
+this env file
+env: load .env
+env: export EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY EXPO_TUNNEL_AUTHTOKEN
+Starting project at C:\Users\blowi\OneDrive\Documents\GitHub\Rasvia1
+2026-02-21T22:11:53.
+411Z expo:prebuild-c
+onfig:expo-splash-sc
+reen:ios config: {
+  image: './assets/i
+mages/splash-icon.pn
+g',
+  imageWidth: 200,
+  resizeMode: 
+'contain',
+  backgroundColor: 
+'#ffffff',
+  dark: {}
+}
+2026-02-21T22:11:53.
+451Z expo:utils:file
+Notifier Observing C
+:\Users\blowi\OneDri
+ve\Documents\GitHub\
+Rasvia1\babel.config
+.js
+2026-02-21T22:11:53.
+458Z expo:prebuild-c
+onfig:expo-splash-sc
+reen:ios config: {
+  image: './assets/i
+mages/splash-icon.pn
+g',
+  imageWidth: 200,
+  resizeMode: 
+'contain',
+  backgroundColor: 
+'#ffffff',
+  dark: {}
+}
+2026-02-21T22:11:53.
+685Z expo:start:serv
+er:devServer 
+Stopping dev server 
+(bundler: metro)
+2026-02-21T22:11:53.
+685Z expo:start:serv
+er:devServer 
+Stopped dev server 
+(bundler: metro)
+2026-02-21T22:11:53.
+718Z expo:prebuild-c
+onfig:expo-splash-sc
+reen:ios config: {
+  image: './assets/i
+mages/splash-icon.pn
+g',
+  imageWidth: 200,
+  resizeMode: 
+'contain',
+  backgroundColor: 
+'#ffffff',
+  dark: {}
+}
+2026-02-21T22:11:53.
+732Z expo:start:serv
+er:metro:router 
+Using app as the 
+root directory for 
+Expo Router.
+2026-02-21T22:11:54.
+433Z 
+expo:metro:config re
+act-native-reanimate
+d package.json: C:\U
+sers\blowi\OneDrive\
+Documents\GitHub\Ras
+via1\node_modules\re
+act-native-reanimate
+d\package.json
+2026-02-21T22:11:54.
+436Z 
+expo:metro:config re
+act-native-worklets 
+package.json: C:\Use
+rs\blowi\OneDrive\Do
+cuments\GitHub\Rasvi
+a1\node_modules\reac
+t-native-worklets\pa
+ckage.json
+
+2026-02-21T22:11:54.
+771Z expo:prebuild-c
+onfig:expo-splash-sc
+reen:ios config: {
+  image: './assets/i
+mages/splash-icon.pn
+g',
+  imageWidth: 200,
+  resizeMode: 
+'contain',
+  backgroundColor: 
+'#ffffff',
+  dark: {}
+}
+2026-02-21T22:11:54.
+777Z 
+expo:metro:config re
+act-native-reanimate
+d package.json: C:\U
+sers\blowi\OneDrive\
+Documents\GitHub\Ras
+via1\node_modules\re
+act-native-reanimate
+d\package.json
+2026-02-21T22:11:54.
+779Z 
+expo:metro:config re
+act-native-worklets 
+package.json: C:\Use
+rs\blowi\OneDrive\Do
+cuments\GitHub\Rasvi
+a1\node_modules\reac
+t-native-worklets\pa
+ckage.json
+Expo Metro config:
+- Version: 54.0.14
+- Extensions: ts, tsx, mjs, js, jsx, json, cjs, scss, sass, css
+- React Native: C:\Users\blowi\OneDrive\Documents\GitHub\Rasvia1\node_modules\react-native
+- Watch Folders: 
+- Node Module Paths: 
+- Sass: null
+- Reanimated: 4.1.6
+- Worklets: 0.5.1
+- Babel Runtime: null
+
+
+Expo Metro config:
+- Version: 54.0.14
+- Extensions: ts, tsx, mjs, js, jsx, json, cjs, scss, sass, css
+- React Native: C:\Users\blowi\OneDrive\Documents\GitHub\Rasvia1\node_modules\react-native
+- Watch Folders: 
+- Node Module Paths: 
+- Sass: null
+- Reanimated: 4.1.6
+- Worklets: 0.5.1
+- Babel Runtime: null
+
+2026-02-21T22:11:54.
+826Z expo:metro:with
+MetroResolvers 
+Appending 8 custom 
+resolvers to Metro 
+config. (has custom 
+resolver: true)
+2026-02-21T22:11:54.
+827Z expo:metro:with
+MetroSupervisingTran
+sformWorker 
+Detected customized 
+"transformerPath"
+2026-02-21T22:11:54.
+827Z expo:metro:with
+MetroSupervisingTran
+sformWorker 
+Applying transform 
+worker supervisor 
+to "transformerPath"
+2026-02-21T22:11:54.
+840Z expo:start:serv
+er:urlCreator URL: h
+ttp://127.0.0.1:8081
+Starting Metro Bundler
+2026-02-21T22:11:55.
+151Z expo:prebuild-c
+onfig:expo-splash-sc
+reen:ios config: {
+  image: './assets/i
+mages/splash-icon.pn
+g',
+  imageWidth: 200,
+  resizeMode: 
+'contain',
+  backgroundColor: 
+'#ffffff',
+  dark: {}
+}
+2026-02-21T22:11:55.
+156Z expo:start:serv
+er:middleware:serveS
+tatic Serving 
+static files from: C
+:\Users\blowi\OneDri
+ve\Documents\GitHub\
+Rasvia1\public
+2026-02-21T22:11:55.
+169Z expo:start:serv
+er:devServer 
+[tunnel] connect to 
+port: 8081
+2026-02-21T22:11:55.
+331Z expo:start:plat
+forms:android:adbSer
+ver C:\Users\blowi\A
+ppData\Local\Android
+\Sdk/platform-tools/
+adb devices -l
+2026-02-21T22:11:55.
+470Z expo:start:serv
+er:ngrok Stopping 
+Tunnel
+2026-02-21T22:11:55.
+471Z expo:start:serv
+er:ngrok Global 
+config path: C:\User
+s\blowi\.expo\ngrok.
+yml
+2026-02-21T22:11:56.
+016Z expo:start:serv
+er:ngrok Hostname: 3
+4xDdRE-anonymous-808
+1.exp.direct
+2026-02-21T22:11:57.
+047Z expo:start:serv
+er:ngrok Stopping 
+Tunnel
+2026-02-21T22:11:57.
+048Z expo:start:serv
+er:ngrok Global 
+config path: C:\User
+s\blowi\.expo\ngrok.
+yml
+2026-02-21T22:11:59.
+896Z expo:start:serv
+er:ngrok Hostname: 3
+4xDdRE-anonymous-808
+1.exp.direct
+2026-02-21T22:12:04.
+991Z expo:start:serv
+er:ngrok Stopping 
+Tunnel
+2026-02-21T22:12:04.
+991Z expo:start:serv
+er:ngrok Global 
+config path: C:\User
+s\blowi\.expo\ngrok.
+yml
+2026-02-21T22:12:06.
+178Z expo:start:serv
+er:ngrok Hostname: 3
+4xDdRE-anonymous-808
+1.exp.direct
+CommandError: 
+TypeError: Cannot 
+read properties of 
+undefined (reading 
+'body')
+Check the Ngrok 
+status page for 
+outages: https://sta
+tus.ngrok.com/
+CommandError: 
+TypeError: Cannot 
+read properties of 
+undefined (reading 
+'body')
+Check the Ngrok 
+status page for 
+outages: https://sta
+tus.ngrok.com/
+    at assertNgrok (
+C:\Users\blowi\OneDr
+ive\Documents\GitHub
+\Rasvia1\node_module
+s\@expo\cli\src\star
+t\server\AsyncNgrok.
+ts:197:15)
+    at AsyncNgrok.co
+nnectToNgrokInternal
+Async (C:\Users\blow
+i\OneDrive\Documents
+\GitHub\Rasvia1\node
+_modules\@expo\cli\s
+rc\start\server\Asyn
+cNgrok.ts:206:9)
+    at processTicksA
+ndRejections (node:i
+nternal/process/task
+_queues:105:5)
+    at AsyncNgrok._c
+onnectToNgrokAsync (
+C:\Users\blowi\OneDr
+ive\Documents\GitHub
+\Rasvia1\node_module
+s\@expo\cli\src\star
+t\server\AsyncNgrok.
+ts:122:21)
+    at AsyncNgrok.st
+artAsync (C:\Users\b
+lowi\OneDrive\Docume
+nts\GitHub\Rasvia1\n
+ode_modules\@expo\cl
+i\src\start\server\A
+syncNgrok.ts:92:22)
+    at MetroBundlerD
+evServer._startTunne
+lAsync (C:\Users\blo
+wi\OneDrive\Document
+s\GitHub\Rasvia1\nod
+e_modules\@expo\cli\
+src\start\server\Bun
+dlerDevServer.ts:256
+:5)
+    at MetroBundlerD
+evServer.postStartAs
+ync (C:\Users\blowi\
+OneDrive\Documents\G
+itHub\Rasvia1\node_m
+odules\@expo\cli\src
+\start\server\Bundle
+rDevServer.ts:229:7)
+    at MetroBundlerD
+evServer.startAsync 
+(C:\Users\blowi\OneD
+rive\Documents\GitHu
+b\Rasvia1\node_modul
+es\@expo\cli\src\sta
+rt\server\BundlerDev
+Server.ts:164:5)
+    at DevServerMana
+ger.startAsync (C:\U
+sers\blowi\OneDrive\
+Documents\GitHub\Ras
+via1\node_modules\@e
+xpo\cli\src\start\se
+rver\DevServerManage
+r.ts:184:7)
+    at startAsync (C
+:\Users\blowi\OneDri
+ve\Documents\GitHub\
+Rasvia1\node_modules
+\@expo\cli\src\start
+\startAsync.ts:100:3
+)
