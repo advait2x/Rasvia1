@@ -48,6 +48,7 @@ import {
 import { useLocation } from "@/lib/location-context";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { AddRestaurantModal } from "@/components/AddRestaurantModal";
+import { AdminRestaurantPanel } from "@/components/AdminRestaurantPanel";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -157,6 +158,8 @@ export default function MapScreen() {
   const [mapCenter, setMapCenter] = useState<Region>(DEFAULT_REGION);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newRestCoords, setNewRestCoords] = useState<{lat: number, lng: number} | null>(null);
+  const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
+  const [adminPanelRestaurant, setAdminPanelRestaurant] = useState<UIRestaurant | null>(null);
 
   const handleAddRestaurantPress = () => {
     setNewRestCoords({ lat: mapCenter.latitude, lng: mapCenter.longitude });
@@ -498,9 +501,16 @@ export default function MapScreen() {
         initialRegion={region}
         onRegionChangeComplete={handleRegionChangeComplete}
         onPanDrag={handleMapInteraction}
+        onLongPress={isAdmin ? (e: any) => {
+          const { latitude, longitude } = e.nativeEvent.coordinate;
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          setNewRestCoords({ lat: latitude, lng: longitude });
+          setShowAddModal(true);
+        } : undefined}
         showsUserLocation={isLiveLocationEnabled}
         showsMyLocationButton={false}
         userInterfaceStyle="dark"
+        mapType={mapType}
       >
         {/* User Home Location Pin (if live disabled) */}
         {!isLiveLocationEnabled && userLocation && (
@@ -570,6 +580,26 @@ export default function MapScreen() {
           onPress={() =>
             router.push(`/restaurant/${selectedRestaurant.id}` as any)
           }
+          isAdmin={isAdmin}
+          onAdminPress={() => setAdminPanelRestaurant(selectedRestaurant)}
+        />
+      )}
+
+      {/* Admin Restaurant Panel */}
+      {isAdmin && adminPanelRestaurant && (
+        <AdminRestaurantPanel
+          restaurant={{
+            id: adminPanelRestaurant.id,
+            name: adminPanelRestaurant.name,
+            waitTime: adminPanelRestaurant.waitTime,
+            waitStatus: adminPanelRestaurant.waitStatus,
+          }}
+          isWaitlistOpen={adminPanelRestaurant.waitTime < 999}
+          onClose={() => setAdminPanelRestaurant(null)}
+          onUpdated={() => {
+            setAdminPanelRestaurant(null);
+            setSelectedRestaurant(null);
+          }}
         />
       )}
 
@@ -654,6 +684,31 @@ export default function MapScreen() {
           </Pressable>
         </View>
       </SafeAreaView>
+
+      {isAdmin && (
+        <View style={{ position: "absolute", top: 110, right: 16, gap: 8 }}>
+          <Pressable
+            onPress={() => setMapType(mapType === "standard" ? "satellite" : "standard")}
+            style={{
+              backgroundColor: mapType === "satellite" ? "#FF9933" : "#1a1a1a",
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: mapType === "satellite" ? "#FF9933" : "#2a2a2a",
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.3,
+              shadowRadius: 4,
+              elevation: 4,
+            }}
+          >
+            <Text style={{ fontSize: 16 }}>{mapType === "satellite" ? "🗺️" : "🛰️"}</Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* Nearby list overlay with swipe-to-dismiss */}
       {showNearbyList && nearbyRestaurants.length > 0 && (
@@ -940,10 +995,14 @@ function SelectedRestaurantCard({
   restaurant,
   onDismiss,
   onPress,
+  isAdmin,
+  onAdminPress,
 }: {
   restaurant: UIRestaurant;
   onDismiss: () => void;
   onPress: () => void;
+  isAdmin?: boolean;
+  onAdminPress?: () => void;
 }) {
   const translateY = useRef(new RNAnimated.Value(CARD_HEIGHT)).current;
 
@@ -1137,6 +1196,24 @@ function SelectedRestaurantCard({
           </View>
         </View>
       </Pressable>
+      {isAdmin && onAdminPress && (
+        <Pressable
+          onPress={onAdminPress}
+          style={{
+            backgroundColor: "#1a1a1a",
+            borderRadius: 12,
+            padding: 10,
+            marginTop: 8,
+            borderWidth: 1,
+            borderColor: "rgba(255,153,51,0.3)",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#FF9933", fontSize: 13 }}>
+            Admin Controls
+          </Text>
+        </Pressable>
+      )}
     </RNAnimated.View>
   );
 }

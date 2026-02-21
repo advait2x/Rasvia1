@@ -709,6 +709,7 @@ export default function RestaurantDetail() {
               setMenu={setMenu}
               onItemPress={(item) => setSelectedItem(item)}
               onQuickAdd={(item) => handleAddToCart(item)}
+              restaurantId={id}
             />
           </View>
         </View>

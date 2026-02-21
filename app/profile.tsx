@@ -31,6 +31,8 @@ import {
   Sparkles,
   Utensils,
   Edit2,
+  Activity,
+  Shield,
 } from "lucide-react-native";
 import Animated, {
   FadeIn,
@@ -45,6 +47,7 @@ import * as Location from "expo-location";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { useLocation } from "@/lib/location-context";
+import { useAdminMode } from "@/hooks/useAdminMode";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -91,6 +94,7 @@ const DAYS = [
 export default function ProfileSettingsScreen() {
   const router = useRouter();
   const { session } = useAuth();
+  const { isAdmin } = useAdminMode();
   const { reloadLocationPrefs, setUserCoordsOverride } = useLocation();
   const [userEmail, setUserEmail] = useState("");
   const [fullName, setFullName] = useState("");
@@ -1205,6 +1209,40 @@ export default function ProfileSettingsScreen() {
               />
             </View>
           </Animated.View>
+
+          {/* Admin Pulse — only visible to admins */}
+          {isAdmin && (
+            <Animated.View
+              entering={FadeInDown.delay(280).duration(500)}
+              className="mx-5 mb-4"
+            >
+              <Pressable
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push("/admin-pulse" as any);
+                }}
+                style={{
+                  backgroundColor: "rgba(255,153,51,0.08)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,153,51,0.25)",
+                  borderRadius: 16,
+                  paddingVertical: 16,
+                  paddingHorizontal: 20,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Shield size={18} color="#FF9933" />
+                  <Text style={{ fontFamily: "Manrope_700Bold", color: "#FF9933", fontSize: 16, marginLeft: 10 }}>
+                    Admin Pulse
+                  </Text>
+                </View>
+                <ChevronRight size={18} color="#FF9933" />
+              </Pressable>
+            </Animated.View>
+          )}
 
           {/* Log Out */}
           <Animated.View
