@@ -1,8 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { WaitBadge } from "@/components/WaitBadge";
-import { Star } from "lucide-react-native";
+import { Star, Clock } from "lucide-react-native";
 import type { UIRestaurant } from "@/lib/restaurant-types";
 import Animated, {
   FadeInRight,
@@ -60,13 +59,6 @@ export function RestaurantListCard({
               height: "50%",
             }}
           />
-          <View className="absolute top-2 right-2">
-            <WaitBadge
-              waitTime={restaurant.waitTime}
-              status={restaurant.waitStatus}
-              size="sm"
-            />
-          </View>
         </View>
         <View className="p-3">
           <Text
@@ -104,6 +96,20 @@ export function RestaurantListCard({
               >
                 {restaurant.rating}
               </Text>
+              
+              <View className="ml-3 flex-row items-center">
+                <Clock size={11} color={restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : "#EF4444"} />
+                <Text
+                  style={{
+                    fontFamily: "Manrope_600SemiBold",
+                    color: restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : "#EF4444",
+                    fontSize: 12,
+                    marginLeft: 3,
+                  }}
+                >
+                  {restaurant.waitTime} min
+                </Text>
+              </View>
             </View>
             <Text
               style={{

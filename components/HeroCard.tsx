@@ -1,8 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, Image, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { WaitBadge } from "@/components/WaitBadge";
-import { Star, MapPin } from "lucide-react-native";
+import { Star, MapPin, Clock } from "lucide-react-native";
 import type { UIRestaurant } from "@/lib/restaurant-types";
 import Animated, {
   FadeInDown,
@@ -41,7 +40,7 @@ export function HeroCard({ restaurant, index, onPress }: HeroCardProps) {
           pressScale.value = withSpring(1);
         }}
         className="rounded-2xl overflow-hidden"
-        style={{ height: 420, borderWidth: 1, borderColor: "#2a2a2a" }}
+        style={{ height: 315, borderWidth: 1, borderColor: "#2a2a2a" }}
       >
         <Image
           source={{ uri: restaurant.image }}
@@ -58,15 +57,6 @@ export function HeroCard({ restaurant, index, onPress }: HeroCardProps) {
             height: "70%",
           }}
         />
-
-        {/* Wait Badge */}
-        <View className="absolute top-4 right-4">
-          <WaitBadge
-            waitTime={restaurant.waitTime}
-            status={restaurant.waitStatus}
-            size="md"
-          />
-        </View>
 
         {/* Content */}
         <View className="absolute bottom-0 left-0 right-0 p-5">
@@ -137,6 +127,20 @@ export function HeroCard({ restaurant, index, onPress }: HeroCardProps) {
               >
                 ({restaurant.reviewCount.toLocaleString()})
               </Text>
+              
+              <View className="ml-4 flex-row items-center">
+                <Clock size={13} color={restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : "#EF4444"} />
+                <Text
+                  style={{
+                    fontFamily: "Manrope_600SemiBold",
+                    color: restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : "#EF4444",
+                    fontSize: 13,
+                    marginLeft: 4,
+                  }}
+                >
+                  {restaurant.waitTime} min
+                </Text>
+              </View>
             </View>
             <View className="flex-row items-center">
               <MapPin size={13} color="#999999" />
