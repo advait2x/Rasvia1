@@ -165,15 +165,25 @@ export default function MapScreen() {
   const [mapCenter, setMapCenter] = useState<Region>(DEFAULT_REGION);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newRestCoords, setNewRestCoords] = useState<{lat: number, lng: number} | null>(null);
-  const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [adminPanelRestaurant, setAdminPanelRestaurant] = useState<UIRestaurant | null>(null);
   const [isSettingLocation, setIsSettingLocation] = useState(false);
+  const [restaurantBeingMoved, setRestaurantBeingMoved] = useState<UIRestaurant | null>(null);
 
   const handleAddRestaurantPress = () => {
     setIsSettingLocation(true);
+    setRestaurantBeingMoved(null);
     setShowMapSearch(false);
     setShowNearbyList(false);
     setSelectedRestaurant(null);
+  };
+
+  const handleAdjustLocationStart = (restaurant: UIRestaurant) => {
+    setRestaurantBeingMoved(restaurant);
+    setIsSettingLocation(true);
+    setAdminPanelRestaurant(null);
+    setSelectedRestaurant(null);
+    setShowMapSearch(false);
+    setShowNearbyList(false);
   };
   
   const { userCoords: userLocation, isLiveLocationEnabled } = useLocation();
@@ -457,7 +467,7 @@ export default function MapScreen() {
       duration: 280,
       useNativeDriver: false,
     }).start();
-  }, [showNearbyList, selectedRestaurant, fabBottom]);
+  }, [showNearbyList, selectedRestaurant, fabBottom, isSettingLocation]);
 
   // Restaurant press: navigate to detail
   const handleRestaurantPress = useCallback(
@@ -520,7 +530,7 @@ export default function MapScreen() {
         showsUserLocation={isLiveLocationEnabled}
         showsMyLocationButton={false}
         userInterfaceStyle="dark"
-        mapType={mapType}
+        mapType="standard"
       >
         {/* User Home Location Pin (if live disabled) */}
         {!isLiveLocationEnabled && userLocation && (
@@ -552,21 +562,6 @@ export default function MapScreen() {
               longitude: restaurant.long!,
             }}
             tracksViewChanges={isZoomedIn}
-            draggable={isAdmin}
-            onDragEnd={async (e) => {
-              if (!isAdmin) return;
-              const { latitude, longitude } = e.nativeEvent.coordinate;
-              try {
-                const { error } = await supabase
-                  .from("restaurants")
-                  .update({ lat: latitude, long: longitude })
-                  .eq("id", restaurant.id);
-                if (error) throw error;
-              } catch (err) {
-                console.error("Error updating location:", err);
-                Alert.alert("Error", "Failed to update restaurant location");
-              }
-            }}
             onPress={() =>
               isZoomedIn
                 ? handleRestaurantPress(restaurant)
@@ -610,6 +605,7 @@ export default function MapScreen() {
             setAdminPanelRestaurant(null);
             setSelectedRestaurant(null);
           }}
+          onAdjustLocation={() => handleAdjustLocationStart(adminPanelRestaurant)}
         />
       )}
 
@@ -697,32 +693,33 @@ export default function MapScreen() {
             <LocateFixed size={20} color="#FF9933" />
           </Pressable>
         </View>
-      </SafeAreaView>
 
-      {isAdmin && (
-        <View style={{ position: "absolute", top: 110, right: 16, gap: 8 }}>
-          <Pressable
-            onPress={() => setMapType(mapType === "standard" ? "satellite" : "standard")}
-            style={{
-              backgroundColor: mapType === "satellite" ? "#FF9933" : "#1a1a1a",
-              width: 40,
-              height: 40,
-              borderRadius: 20,
+        {/* Status pill — shown directly below Discover Nearby when in location-setting mode */}
+        {isSettingLocation && (
+          <View style={{ alignItems: "center", paddingTop: 8 }}>
+            <View style={{
+              flexDirection: "row",
               alignItems: "center",
-              justifyContent: "center",
-              borderWidth: 1,
-              borderColor: mapType === "satellite" ? "#FF9933" : "#2a2a2a",
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.3,
-              shadowRadius: 4,
-              elevation: 4,
-            }}
-          >
-            <Text style={{ fontSize: 16 }}>{mapType === "satellite" ? "🗺️" : "🛰️"}</Text>
-          </Pressable>
-        </View>
-      )}
+              backgroundColor: "#1a1a1a",
+              borderWidth: 1.5,
+              borderColor: "#FF9933",
+              borderRadius: 20,
+              paddingHorizontal: 14,
+              paddingVertical: 7,
+            }}>
+              <MapPin size={13} color="#FF9933" />
+              <Text style={{
+                fontFamily: "Manrope_600SemiBold",
+                color: "#FF9933",
+                fontSize: 13,
+                marginLeft: 6,
+              }}>
+                {restaurantBeingMoved ? `Moving: ${restaurantBeingMoved.name}` : "Adding new restaurant"}
+              </Text>
+            </View>
+          </View>
+        )}
+      </SafeAreaView>
 
       {/* Nearby list overlay with swipe-to-dismiss */}
       {showNearbyList && nearbyRestaurants.length > 0 && (
@@ -866,21 +863,66 @@ export default function MapScreen() {
             edges={["bottom"]}
             style={{ position: "absolute", bottom: 0, left: 0, right: 0 }}
           >
-            <View style={{ padding: 20 }}>
+            <View style={{ padding: 20, gap: 10, alignItems: "center" }}>
               <Pressable
                 onPress={() => {
                   if (Platform.OS !== "web") {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }
                   setIsSettingLocation(false);
-                  setNewRestCoords({ lat: mapCenter.latitude, lng: mapCenter.longitude });
-                  setShowAddModal(true);
+                  setRestaurantBeingMoved(null);
+                }}
+                style={{
+                  backgroundColor: "#1a1a1a",
+                  paddingVertical: 10,
+                  paddingHorizontal: 28,
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: "#3a3a3a",
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "BricolageGrotesque_700Bold",
+                    color: "#f5f5f5",
+                    fontSize: 15,
+                  }}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  if (Platform.OS !== "web") {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  }
+                  const camera = await mapRef.current?.getCamera();
+                  const lat = camera?.center?.latitude ?? mapCenter.latitude;
+                  const lng = camera?.center?.longitude ?? mapCenter.longitude;
+                  if (restaurantBeingMoved) {
+                    try {
+                      const { error } = await supabase
+                        .from("restaurants")
+                        .update({ lat, long: lng })
+                        .eq("id", restaurantBeingMoved.id);
+                      if (error) throw error;
+                    } catch (err: any) {
+                      Alert.alert("Error", err.message || "Failed to update location.");
+                    }
+                    setIsSettingLocation(false);
+                    setRestaurantBeingMoved(null);
+                  } else {
+                    setIsSettingLocation(false);
+                    setNewRestCoords({ lat, lng });
+                    setShowAddModal(true);
+                  }
                 }}
                 style={{
                   backgroundColor: "#A855F7",
                   paddingVertical: 16,
                   borderRadius: 16,
                   alignItems: "center",
+                  alignSelf: "stretch",
                   shadowColor: "#A855F7",
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.4,

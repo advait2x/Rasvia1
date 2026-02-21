@@ -9,7 +9,7 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
-import { X } from "lucide-react-native";
+import { X, MapPin } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { supabase } from "@/lib/supabase";
 
@@ -18,6 +18,7 @@ interface AdminRestaurantPanelProps {
   isWaitlistOpen: boolean;
   onClose: () => void;
   onUpdated: () => void;
+  onAdjustLocation?: () => void;
 }
 
 export function AdminRestaurantPanel({
@@ -25,6 +26,7 @@ export function AdminRestaurantPanel({
   isWaitlistOpen,
   onClose,
   onUpdated,
+  onAdjustLocation,
 }: AdminRestaurantPanelProps) {
   const [publishLoading, setPublishLoading] = useState(false);
   const [featuredLoading, setFeaturedLoading] = useState(false);
@@ -344,6 +346,49 @@ export function AdminRestaurantPanel({
                 </Pressable>
               </View>
             )}
+
+            {/* Location */}
+            <View style={{ marginBottom: 20 }}>
+              <Text
+                style={{
+                  fontFamily: "Manrope_600SemiBold",
+                  color: "#999999",
+                  fontSize: 12,
+                  textTransform: "uppercase",
+                  letterSpacing: 1,
+                  marginBottom: 10,
+                }}
+              >
+                Location
+              </Text>
+              <Pressable
+                onPress={() => {
+                  haptic();
+                  onAdjustLocation?.();
+                }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: "rgba(168, 85, 247, 0.1)",
+                  borderRadius: 12,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: "rgba(168, 85, 247, 0.4)",
+                }}
+              >
+                <MapPin size={16} color="#A855F7" />
+                <Text
+                  style={{
+                    fontFamily: "Manrope_600SemiBold",
+                    color: "#A855F7",
+                    fontSize: 15,
+                    marginLeft: 10,
+                  }}
+                >
+                  Adjust Location
+                </Text>
+              </Pressable>
+            </View>
 
             {/* Wait Time Override */}
             <View style={{ marginBottom: 20 }}>
