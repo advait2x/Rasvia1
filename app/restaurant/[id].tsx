@@ -32,6 +32,7 @@ import Animated, {
 import * as Haptics from "expo-haptics";
 import { WaitBadge } from "@/components/WaitBadge";
 import { MenuGridItem } from "@/components/MenuGridItem";
+import { MenuEditor } from "@/components/MenuEditor";
 import { FoodDetailModal } from "@/components/FoodDetailModal";
 import { GroupCartDrawer } from "@/components/GroupCartDrawer";
 import { supabase } from "@/lib/supabase";
@@ -255,10 +256,6 @@ export default function RestaurantDetail() {
     }
     setIsFavorited((prev) => !prev);
   }, []);
-
-  // Split menu into two columns for masonry layout
-  const leftColumn = menu.filter((_, i) => i % 2 === 0);
-  const rightColumn = menu.filter((_, i) => i % 2 !== 0);
 
   const joinBtnScale = useSharedValue(1);
   const joinBtnStyle = useAnimatedStyle(() => ({
@@ -706,29 +703,13 @@ export default function RestaurantDetail() {
             </Text>
           </View>
 
-          <View className="px-4 flex-row">
-            <View className="flex-1 mr-1.5">
-              {leftColumn.map((item, index) => (
-                <MenuGridItem
-                  key={item.id}
-                  item={item}
-                  index={index * 2}
-                  onPress={() => setSelectedItem(item)}
-                  onQuickAdd={() => handleAddToCart(item)}
-                />
-              ))}
-            </View>
-            <View className="flex-1 ml-1.5" style={{ marginTop: 24 }}>
-              {rightColumn.map((item, index) => (
-                <MenuGridItem
-                  key={item.id}
-                  item={item}
-                  index={index * 2 + 1}
-                  onPress={() => setSelectedItem(item)}
-                  onQuickAdd={() => handleAddToCart(item)}
-                />
-              ))}
-            </View>
+          <View className="px-4">
+            <MenuEditor
+              menu={menu}
+              setMenu={setMenu}
+              onItemPress={(item) => setSelectedItem(item)}
+              onQuickAdd={(item) => handleAddToCart(item)}
+            />
           </View>
         </View>
       </Animated.ScrollView>

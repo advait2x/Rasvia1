@@ -34,6 +34,7 @@ import {
   X,
   Home,
   ArrowUpDown,
+  Plus,
 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeIn, FadeInDown, FadeInUp, FadeOut, LinearTransition } from "react-native-reanimated";
@@ -45,6 +46,8 @@ import {
   mapSupabaseToUI,
 } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
+import { useAdminMode } from "@/hooks/useAdminMode";
+import { AddRestaurantModal } from "@/components/AddRestaurantModal";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -146,10 +149,19 @@ function haversineDistance(
 export default function MapScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
+  const { isAdmin } = useAdminMode();
 
   // State
   const [restaurants, setRestaurants] = useState<UIRestaurant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mapCenter, setMapCenter] = useState<Region>(DEFAULT_REGION);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newRestCoords, setNewRestCoords] = useState<{lat: number, lng: number} | null>(null);
+
+  const handleAddRestaurantPress = () => {
+    setNewRestCoords({ lat: mapCenter.latitude, lng: mapCenter.longitude });
+    setShowAddModal(true);
+  };
   
   const { userCoords: userLocation, isLiveLocationEnabled } = useLocation();
   const { targetLat, targetLng, restaurantId } = useLocalSearchParams<{ targetLat?: string; targetLng?: string; restaurantId?: string }>();
@@ -194,17 +206,21 @@ export default function MapScreen() {
     }
     fetchRestaurants();
 
-    // Realtime subscription
     const subscription = supabase
       .channel("map:restaurants")
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "restaurants" },
+        { event: "*", schema: "public", table: "restaurants" },
         (payload) => {
-          const updated = mapSupabaseToUI(payload.new as SupabaseRestaurant, userLocation);
-          setRestaurants((prev) =>
-            prev.map((r) => (r.id === updated.id ? updated : r)),
-          );
+          if (payload.eventType === "UPDATE") {
+            const updated = mapSupabaseToUI(payload.new as SupabaseRestaurant, userLocation);
+            setRestaurants((prev) =>
+              prev.map((r) => (r.id === updated.id ? updated : r)),
+            );
+          } else if (payload.eventType === "INSERT") {
+            const added = mapSupabaseToUI(payload.new as SupabaseRestaurant, userLocation);
+            setRestaurants((prev) => [...prev, added]);
+          }
         },
       )
       .subscribe();
@@ -409,10 +425,10 @@ export default function MapScreen() {
     }
   }, [userLocation, mappableRestaurants]);
 
-  // Track zoom level ONLY — does NOT change the marker list.
-  // Markers stay permanently mounted, only their visual children swap.
+  // Track zoom level AND center for dropping pins
   const handleRegionChangeComplete = useCallback((newRegion: Region) => {
     setIsZoomedIn(newRegion.latitudeDelta < ZOOM_THRESHOLD);
+    setMapCenter(newRegion);
   }, []);
 
   // Smoothly animate FAB when overlays appear/disappear
@@ -516,6 +532,21 @@ export default function MapScreen() {
               longitude: restaurant.long!,
             }}
             tracksViewChanges={isZoomedIn}
+            draggable={isAdmin}
+            onDragEnd={async (e) => {
+              if (!isAdmin) return;
+              const { latitude, longitude } = e.nativeEvent.coordinate;
+              try {
+                const { error } = await supabase
+                  .from("restaurants")
+                  .update({ lat: latitude, long: longitude })
+                  .eq("id", restaurant.id);
+                if (error) throw error;
+              } catch (err) {
+                console.error("Error updating location:", err);
+                Alert.alert("Error", "Failed to update restaurant location");
+              }
+            }}
             onPress={() =>
               isZoomedIn
                 ? handleRestaurantPress(restaurant)
@@ -706,6 +737,54 @@ export default function MapScreen() {
               longitudeDelta: 0.008,
             };
             mapRef.current?.animateToRegion(targetRegion, 600);
+          }}
+        />
+      )}
+
+      {/* Admin Add Restaurant FAB */}
+      {isAdmin && !showMapSearch && !showNearbyList && !selectedRestaurant && !showAddModal && (
+        <RNAnimated.View
+          style={{
+            position: "absolute",
+            right: 16,
+            bottom: RNAnimated.add(fabBottom, 70) as any,
+          }}
+        >
+          <Pressable
+            onPress={() => {
+              if (Platform.OS !== "web") {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }
+              handleAddRestaurantPress();
+            }}
+            style={{
+              backgroundColor: "#1a1a1a",
+              width: 50,
+              height: 50,
+              borderRadius: 25,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1.5,
+              borderColor: "#22C55E", // Green to distinguish admin action
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 3 },
+              shadowOpacity: 0.4,
+              shadowRadius: 6,
+              elevation: 6,
+            }}
+          >
+            <Plus size={24} color="#22C55E" />
+          </Pressable>
+        </RNAnimated.View>
+      )}
+
+      {/* Add Restaurant Modal */}
+      {showAddModal && newRestCoords && (
+        <AddRestaurantModal
+          coords={newRestCoords}
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => {
+            setShowAddModal(false);
           }}
         />
       )}
