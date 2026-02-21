@@ -312,8 +312,11 @@ export default function AdminPulseScreen() {
             ) : (
               restaurants.map((r, index) => {
                 const wait = r.current_wait_time ?? 0;
-                const color = getWaitColor(wait);
-                const isHighWait = wait >= 45;
+                const isClosed = wait >= 999 || !r.is_waitlist_open;
+                const noWait = wait < 0;
+                
+                const color = isClosed ? "#999999" : getWaitColor(wait);
+                const isHighWait = !isClosed && wait >= 45;
                 return (
                   <View
                     key={r.id}
@@ -340,7 +343,7 @@ export default function AdminPulseScreen() {
                       >
                         {r.name}
                       </Text>
-                      {!r.is_waitlist_open && (
+                      {isClosed && (
                         <Text
                           style={{
                             fontFamily: "Manrope_500Medium",
@@ -359,7 +362,7 @@ export default function AdminPulseScreen() {
                         color,
                       }}
                     >
-                      {wait} min
+                      {isClosed || noWait ? '-- min' : `${wait} min`}
                     </Text>
                   </View>
                 );

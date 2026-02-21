@@ -30,8 +30,9 @@ export function RestaurantListCard({
   return (
     <Animated.View
       entering={FadeInRight.delay(index * 50).duration(400)}
-      style={[animatedStyle, { width: 200, marginRight: 12 }]}
+      style={{ width: 200, marginRight: 12 }}
     >
+      <Animated.View style={animatedStyle}>
       <Pressable
         onPress={onPress}
         onPressIn={() => {
@@ -98,16 +99,16 @@ export function RestaurantListCard({
               </Text>
               
               <View className="ml-3 flex-row items-center">
-                <Clock size={11} color={restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : "#EF4444"} />
+                <Clock size={11} color={restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : restaurant.waitStatus === "grey" ? "#888888" : restaurant.waitStatus === "darkgrey" ? "#999999" : "#EF4444"} />
                 <Text
                   style={{
                     fontFamily: "Manrope_600SemiBold",
-                    color: restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : "#EF4444",
+                    color: restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : restaurant.waitStatus === "grey" ? "#888888" : restaurant.waitStatus === "darkgrey" ? "#999999" : "#EF4444",
                     fontSize: 12,
                     marginLeft: 3,
                   }}
                 >
-                  {restaurant.waitTime} min
+                  {restaurant.waitStatus === 'darkgrey' ? 'Closed' : restaurant.waitTime < 0 ? '-- min' : `${restaurant.waitTime} min`}
                 </Text>
               </View>
             </View>
@@ -123,6 +124,7 @@ export function RestaurantListCard({
           </View>
         </View>
       </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }

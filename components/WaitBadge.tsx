@@ -12,7 +12,7 @@ import { useEffect } from "react";
 
 interface WaitBadgeProps {
   waitTime: number;
-  status: "green" | "amber" | "red";
+  status: "green" | "amber" | "red" | "grey" | "darkgrey";
   size?: "sm" | "md" | "lg";
 }
 
@@ -20,6 +20,8 @@ const statusColors = {
   green: { bg: "rgba(34, 197, 94, 0.2)", text: "#22C55E", glow: "#22C55E" },
   amber: { bg: "rgba(245, 158, 11, 0.2)", text: "#F59E0B", glow: "#F59E0B" },
   red: { bg: "rgba(239, 68, 68, 0.2)", text: "#EF4444", glow: "#EF4444" },
+  grey: { bg: "rgba(136, 136, 136, 0.2)", text: "#888888", glow: "#888888" },
+  darkgrey: { bg: "rgba(60, 60, 60, 0.8)", text: "#999999", glow: "transparent" },
 };
 
 export function WaitBadge({ waitTime, status, size = "md" }: WaitBadgeProps) {
@@ -76,7 +78,7 @@ export function WaitBadge({ waitTime, status, size = "md" }: WaitBadgeProps) {
           fontSize: textSizes[size],
         }}
       >
-        {waitTime} min
+        {status === "darkgrey" ? "Closed" : waitTime < 0 ? "-- min" : `${waitTime} min`}
       </Text>
     </Animated.View>
   );

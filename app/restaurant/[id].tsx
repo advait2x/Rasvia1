@@ -262,6 +262,9 @@ export default function RestaurantDetail() {
     transform: [{ scale: joinBtnScale.value }],
   }));
 
+  const isClosed = restaurant?.waitStatus === "darkgrey";
+  const noWait = restaurant?.waitTime != null && restaurant.waitTime < 0;
+
   // Show loading or error state
   if (!restaurant) {
     return (
@@ -778,33 +781,34 @@ export default function RestaurantDetail() {
 
             <Animated.View style={[joinBtnStyle, { flex: 1 }]}>
               <Pressable
-                onPress={handleJoinWaitlist}
+                onPress={isClosed || noWait ? undefined : handleJoinWaitlist}
+                disabled={isClosed || noWait}
                 onPressIn={() => {
-                  joinBtnScale.value = withSpring(0.95);
+                  if (!isClosed && !noWait) joinBtnScale.value = withSpring(0.95);
                 }}
                 onPressOut={() => {
-                  joinBtnScale.value = withSpring(1);
+                  if (!isClosed && !noWait) joinBtnScale.value = withSpring(1);
                 }}
                 className="rounded-2xl py-4 items-center flex-row justify-center"
                 style={{
-                  backgroundColor: "#FF9933",
-                  shadowColor: "#FF9933",
+                  backgroundColor: isClosed || noWait ? "#333333" : "#FF9933",
+                  shadowColor: isClosed || noWait ? "transparent" : "#FF9933",
                   shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.4,
+                  shadowOpacity: isClosed || noWait ? 0 : 0.4,
                   shadowRadius: 16,
-                  elevation: 10,
+                  elevation: isClosed || noWait ? 0 : 10,
                 }}
               >
-                <Clock size={18} color="#0f0f0f" strokeWidth={2.5} />
+                <Clock size={18} color={isClosed || noWait ? "#999999" : "#0f0f0f"} strokeWidth={2.5} />
                 <Text
                   style={{
                     fontFamily: "BricolageGrotesque_700Bold",
-                    color: "#0f0f0f",
+                    color: isClosed || noWait ? "#999999" : "#0f0f0f",
                     fontSize: 17,
                     marginLeft: 8,
                   }}
                 >
-                  Join Waitlist · {restaurant.waitTime} min
+                  {isClosed ? "Currently Closed" : noWait ? "Join Waitlist" : `Join Waitlist · ${restaurant.waitTime} min`}
                 </Text>
               </Pressable>
             </Animated.View>

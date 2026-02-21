@@ -75,8 +75,9 @@ function AppetizerCard({
   return (
     <Animated.View
       entering={FadeInRight.delay(index * 80).duration(400)}
-      style={[animatedStyle, { width: 150, marginRight: 12 }]}
+      style={{ width: 150, marginRight: 12 }}
     >
+      <Animated.View style={animatedStyle}>
       <Pressable
         onPressIn={() => {
           pressScale.value = withSpring(0.95);
@@ -141,6 +142,7 @@ function AppetizerCard({
           </View>
         </View>
       </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }

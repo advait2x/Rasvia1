@@ -26,7 +26,7 @@ export interface SupabaseRestaurant {
 // ==========================================
 // 2. UI LAYER (For Components)
 // ==========================================
-export type WaitStatus = 'green' | 'amber' | 'red';
+export type WaitStatus = 'green' | 'amber' | 'red' | 'grey' | 'darkgrey';
 
 export interface UIRestaurant {
     id: string;
@@ -60,6 +60,8 @@ export interface UIRestaurant {
  * Red: >= 45 minutes
  */
 export function getWaitStatus(waitTime: number): WaitStatus {
+    if (waitTime >= 999) return 'darkgrey';
+    if (waitTime < 0) return 'grey';
     if (waitTime < 15) return 'green';
     if (waitTime < 45) return 'amber';
     return 'red';
@@ -150,7 +152,7 @@ export function mapSupabaseToUI(
         address: restaurant.address || '',
         description: restaurant.description || '',
         tags: cuisineTags,
-        queueLength: Math.ceil(waitTime / 5),
+        queueLength: waitTime >= 999 ? 0 : Math.ceil(waitTime / 5),
         lat: hasValidCoords ? lat : null,
         long: hasValidCoords ? lng : null,
     };

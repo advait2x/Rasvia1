@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Image,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Pencil, Camera, Plus, X, Trash2, FolderPlus } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -211,6 +212,7 @@ function EditableMenuItem({
   };
 
   const handleDelete = () => {
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert("Delete Item", `Remove "${item.name}" from the menu?`, [
       { text: "Cancel", style: "cancel" },
       {
@@ -306,10 +308,13 @@ function EditableMenuItem({
       )}
 
       <Modal visible={editModalVisible} transparent animationType="fade">
-        <View style={{
-          flex: 1, backgroundColor: "rgba(0,0,0,0.7)",
-          justifyContent: "center", alignItems: "center", padding: 20,
-        }}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{
+            flex: 1, backgroundColor: "rgba(0,0,0,0.7)",
+            justifyContent: "center", alignItems: "center", padding: 20,
+          }}
+        >
           <View style={{
             backgroundColor: "#1a1a1a", padding: 24, borderRadius: 16,
             width: "100%", borderWidth: 1, borderColor: "#333",
@@ -334,10 +339,16 @@ function EditableMenuItem({
               autoFocus
             />
             <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
-              <Pressable onPress={() => setEditModalVisible(false)} style={{ padding: 12, marginRight: 8 }}>
+              <Pressable onPress={() => {
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setEditModalVisible(false);
+              }} style={{ padding: 12, marginRight: 8 }}>
                 <Text style={{ color: "#999", fontFamily: "Manrope_600SemiBold" }}>Cancel</Text>
               </Pressable>
-              <Pressable onPress={saveEdit} style={{
+              <Pressable onPress={() => {
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                saveEdit();
+              }} style={{
                 backgroundColor: "#FF9933", paddingVertical: 12,
                 paddingHorizontal: 20, borderRadius: 8,
               }}>
@@ -345,7 +356,7 @@ function EditableMenuItem({
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -439,7 +450,10 @@ export function MenuEditor({ menu, setMenu, onItemPress, onQuickAdd, restaurantI
           marginBottom: 12, gap: 8,
         }}>
           <Pressable
-            onPress={() => setShowAddItem(true)}
+            onPress={() => {
+              if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowAddItem(true);
+            }}
             style={{
               flexDirection: "row", alignItems: "center",
               backgroundColor: "rgba(34,197,94,0.12)",
@@ -487,10 +501,13 @@ export function MenuEditor({ menu, setMenu, onItemPress, onQuickAdd, restaurantI
 
       {/* Add Item Modal */}
       <Modal visible={showAddItem} transparent animationType="slide">
-        <View style={{
-          flex: 1, backgroundColor: "rgba(0,0,0,0.7)",
-          justifyContent: "flex-end",
-        }}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{
+            flex: 1, backgroundColor: "rgba(0,0,0,0.7)",
+            justifyContent: "flex-end",
+          }}
+        >
           <View style={{
             backgroundColor: "#1a1a1a", borderTopLeftRadius: 24,
             borderTopRightRadius: 24, padding: 24,
@@ -501,7 +518,10 @@ export function MenuEditor({ menu, setMenu, onItemPress, onQuickAdd, restaurantI
               <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#22C55E", fontSize: 20 }}>
                 Add Menu Item
               </Text>
-              <Pressable onPress={() => setShowAddItem(false)} style={{ padding: 4 }}>
+              <Pressable onPress={() => {
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowAddItem(false);
+              }} style={{ padding: 4 }}>
                 <X color="#999" size={24} />
               </Pressable>
             </View>
@@ -531,7 +551,10 @@ export function MenuEditor({ menu, setMenu, onItemPress, onQuickAdd, restaurantI
             />
 
             <Pressable
-              onPress={handleAddItem}
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                handleAddItem();
+              }}
               disabled={addingItem}
               style={{
                 backgroundColor: "#22C55E", paddingVertical: 14,
@@ -548,7 +571,7 @@ export function MenuEditor({ menu, setMenu, onItemPress, onQuickAdd, restaurantI
               )}
             </Pressable>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

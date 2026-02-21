@@ -366,7 +366,7 @@ export function AdminRestaurantPanel({
                   gap: 10,
                 }}
               >
-                {[15, 30, 45, 60].map((mins) => {
+                {[5, 10, 15, 30, 45, 60].map((mins) => {
                   const loading = waitTimeLoading === `${mins}`;
                   return (
                     <Pressable

@@ -29,8 +29,9 @@ export function HeroCard({ restaurant, index, onPress }: HeroCardProps) {
   return (
     <Animated.View
       entering={FadeInDown.delay(index * 100).duration(600)}
-      style={[animatedStyle, { width: CARD_WIDTH, marginRight: 16 }]}
+      style={{ width: CARD_WIDTH, marginRight: 16 }}
     >
+      <Animated.View style={animatedStyle}>
       <Pressable
         onPress={onPress}
         onPressIn={() => {
@@ -129,16 +130,16 @@ export function HeroCard({ restaurant, index, onPress }: HeroCardProps) {
               </Text>
               
               <View className="ml-4 flex-row items-center">
-                <Clock size={13} color={restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : "#EF4444"} />
+                <Clock size={13} color={restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : restaurant.waitStatus === "grey" ? "#888888" : restaurant.waitStatus === "darkgrey" ? "#999999" : "#EF4444"} />
                 <Text
                   style={{
                     fontFamily: "Manrope_600SemiBold",
-                    color: restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : "#EF4444",
+                    color: restaurant.waitStatus === "green" ? "#22C55E" : restaurant.waitStatus === "amber" ? "#F59E0B" : restaurant.waitStatus === "grey" ? "#888888" : restaurant.waitStatus === "darkgrey" ? "#999999" : "#EF4444",
                     fontSize: 13,
                     marginLeft: 4,
                   }}
                 >
-                  {restaurant.waitTime} min
+                  {restaurant.waitStatus === 'darkgrey' ? 'Closed' : restaurant.waitTime < 0 ? '-- min' : `${restaurant.waitTime} min`}
                 </Text>
               </View>
             </View>
@@ -167,6 +168,7 @@ export function HeroCard({ restaurant, index, onPress }: HeroCardProps) {
           </View>
         </View>
       </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }

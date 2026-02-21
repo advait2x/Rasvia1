@@ -40,14 +40,12 @@ export function MenuGridItem({
   return (
     <Animated.View
       entering={FadeInUp.delay(index * 50).duration(500)}
-      style={[
-        animatedStyle,
-        {
-          width: COLUMN_WIDTH,
-          marginBottom: COLUMN_GAP,
-        },
-      ]}
+      style={{
+        width: COLUMN_WIDTH,
+        marginBottom: COLUMN_GAP,
+      }}
     >
+      <Animated.View style={animatedStyle}>
       <Pressable
         onPress={onPress}
         onPressIn={() => {
@@ -174,6 +172,7 @@ export function MenuGridItem({
           </Text>
         </View>
       </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }

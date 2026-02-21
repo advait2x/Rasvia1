@@ -61,16 +61,23 @@ const CLUSTERING_THRESHOLD = 0.12;
 const NEARBY_CLUSTER_RADIUS_MILES = 3;
 
 // Wait-status colors (matches WaitBadge)
-const STATUS_COLORS: Record<WaitStatus, string> = {
+const STATUS_COLORS: Record<string, string> = {
   green: "#22C55E",
   amber: "#F59E0B",
   red: "#EF4444",
+  grey: "#888888",
+  darkgrey: "#555555",
+  purple: "#A855F7",
 };
-const STATUS_BG: Record<WaitStatus, string> = {
+const STATUS_BG: Record<string, string> = {
   green: "rgba(34, 197, 94, 0.2)",
   amber: "rgba(245, 158, 11, 0.2)",
   red: "rgba(239, 68, 68, 0.2)",
+  grey: "rgba(136, 136, 136, 0.2)",
+  darkgrey: "rgba(85, 85, 85, 0.2)",
+  purple: "rgba(168, 85, 247, 0.2)",
 };
+
 
 // Default region (fallback if location unavailable)
 const DEFAULT_REGION: Region = {
@@ -160,10 +167,13 @@ export default function MapScreen() {
   const [newRestCoords, setNewRestCoords] = useState<{lat: number, lng: number} | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [adminPanelRestaurant, setAdminPanelRestaurant] = useState<UIRestaurant | null>(null);
+  const [isSettingLocation, setIsSettingLocation] = useState(false);
 
   const handleAddRestaurantPress = () => {
-    setNewRestCoords({ lat: mapCenter.latitude, lng: mapCenter.longitude });
-    setShowAddModal(true);
+    setIsSettingLocation(true);
+    setShowMapSearch(false);
+    setShowNearbyList(false);
+    setSelectedRestaurant(null);
   };
   
   const { userCoords: userLocation, isLiveLocationEnabled } = useLocation();
@@ -440,7 +450,7 @@ export default function MapScreen() {
     if (showNearbyList) {
       target = OVERLAY_HEIGHT + 16;
     } else if (selectedRestaurant) {
-      target = CARD_HEIGHT + 20;
+      target = CARD_HEIGHT + (isAdmin ? 65 : 20);
     }
     RNAnimated.timing(fabBottom, {
       toValue: target,
@@ -641,7 +651,10 @@ export default function MapScreen() {
 
           {/* Discover Nearby — centered pill */}
           <Pressable
-            onPress={handleDiscoverNearby}
+            onPress={() => {
+              if (isSettingLocation) return;
+              handleDiscoverNearby();
+            }}
             style={{
               backgroundColor: "#1a1a1a",
               flexDirection: "row",
@@ -650,14 +663,15 @@ export default function MapScreen() {
               paddingVertical: 14,
               borderRadius: 28,
               borderWidth: 1.5,
-              borderColor: "#FF9933",
+              borderColor: isSettingLocation ? "#666" : "#FF9933",
+              opacity: isSettingLocation ? 0.5 : 1,
             }}
           >
-            <Compass size={18} color="#FF9933" />
+            <Compass size={18} color={isSettingLocation ? "#666" : "#FF9933"} />
             <Text
               style={{
                 fontFamily: "BricolageGrotesque_700Bold",
-                color: "#FF9933",
+                color: isSettingLocation ? "#666" : "#FF9933",
                 fontSize: 15,
                 marginLeft: 8,
               }}
@@ -740,7 +754,7 @@ export default function MapScreen() {
       )}
 
       {/* Search FAB — bottom right, smoothly rises above overlays */}
-      {!showMapSearch && (
+      {!showMapSearch && !isSettingLocation && (
         <RNAnimated.View
           style={{
             position: "absolute",
@@ -797,7 +811,7 @@ export default function MapScreen() {
       )}
 
       {/* Admin Add Restaurant FAB */}
-      {isAdmin && !showMapSearch && !showNearbyList && !selectedRestaurant && !showAddModal && (
+      {isAdmin && !showMapSearch && !showNearbyList && !selectedRestaurant && !showAddModal && !isSettingLocation && (
         <RNAnimated.View
           style={{
             position: "absolute",
@@ -831,6 +845,62 @@ export default function MapScreen() {
             <Plus size={24} color="#22C55E" />
           </Pressable>
         </RNAnimated.View>
+      )}
+
+      {/* Purple Location Pin & Bottom Button for Setting Location */}
+      {isSettingLocation && (
+        <>
+          <View style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            marginTop: -12,
+            marginLeft: -12,
+            pointerEvents: "none",
+            zIndex: 10,
+          }}>
+            <DotMarker status="purple" size={24} />
+          </View>
+
+          <SafeAreaView
+            edges={["bottom"]}
+            style={{ position: "absolute", bottom: 0, left: 0, right: 0 }}
+          >
+            <View style={{ padding: 20 }}>
+              <Pressable
+                onPress={() => {
+                  if (Platform.OS !== "web") {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  }
+                  setIsSettingLocation(false);
+                  setNewRestCoords({ lat: mapCenter.latitude, lng: mapCenter.longitude });
+                  setShowAddModal(true);
+                }}
+                style={{
+                  backgroundColor: "#A855F7",
+                  paddingVertical: 16,
+                  borderRadius: 16,
+                  alignItems: "center",
+                  shadowColor: "#A855F7",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.4,
+                  shadowRadius: 8,
+                  elevation: 6,
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "BricolageGrotesque_700Bold",
+                    color: "#ffffff",
+                    fontSize: 18,
+                  }}
+                >
+                  Set Location
+                </Text>
+              </Pressable>
+            </View>
+          </SafeAreaView>
+        </>
       )}
 
       {/* Add Restaurant Modal */}
@@ -930,7 +1000,7 @@ function ZoomedInMarker({ restaurant }: { restaurant: UIRestaurant }) {
               fontSize: 9,
             }}
           >
-            {restaurant.waitTime}m
+            {restaurant.waitStatus === 'darkgrey' ? 'Closed' : restaurant.waitTime < 0 ? '--m' : `${restaurant.waitTime}m`}
           </Text>
         </View>
       </View>
@@ -943,14 +1013,14 @@ function ZoomedInMarker({ restaurant }: { restaurant: UIRestaurant }) {
 // outer = wait color, middle = black, center = white
 // Size scales with zoom level
 // ==========================================
-function DotMarker({ status }: { status: WaitStatus }) {
+function DotMarker({ status, size = 20 }: { status: WaitStatus | "purple", size?: number }) {
   // Fixed size — no dynamic props means the marker bitmap is never re-rasterized
   return (
     <View
       style={{
-        width: 20,
-        height: 20,
-        borderRadius: 10,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
         backgroundColor: STATUS_COLORS[status],
         alignItems: "center",
         justifyContent: "center",
@@ -964,9 +1034,9 @@ function DotMarker({ status }: { status: WaitStatus }) {
       {/* Black middle ring */}
       <View
         style={{
-          width: 12,
-          height: 12,
-          borderRadius: 6,
+          width: size * 0.6,
+          height: size * 0.6,
+          borderRadius: size * 0.3,
           backgroundColor: "#111111",
           alignItems: "center",
           justifyContent: "center",
@@ -975,9 +1045,9 @@ function DotMarker({ status }: { status: WaitStatus }) {
         {/* White center dot */}
         <View
           style={{
-            width: 5,
-            height: 5,
-            borderRadius: 2.5,
+            width: size * 0.25,
+            height: size * 0.25,
+            borderRadius: size * 0.125,
             backgroundColor: "#ffffff",
           }}
         />
@@ -1172,7 +1242,11 @@ function SelectedRestaurantCard({
                     fontSize: 11,
                   }}
                 >
-                  {restaurant.waitTime} min
+                  {restaurant.waitStatus === "darkgrey" 
+                    ? "Closed" 
+                    : restaurant.waitTime < 0 
+                    ? "-- min" 
+                    : `${restaurant.waitTime} min`}
                 </Text>
               </View>
             </View>
@@ -1455,7 +1529,7 @@ function NearbyListOverlay({
                   fontSize: 11,
                 }}
               >
-                {r.waitTime}m
+                {r.waitStatus === 'darkgrey' ? 'Closed' : r.waitTime < 0 ? '--' : `${r.waitTime}m`}
               </Text>
             </View>
             {/* Distance */}
@@ -1574,7 +1648,7 @@ function ClusterMarker({ restaurants }: { restaurants: UIRestaurant[] }) {
                 fontSize: 9,
               }}
             >
-              {r.waitTime}m
+              {r.waitStatus === 'darkgrey' ? 'Closed' : r.waitTime < 0 ? '--m' : `${r.waitTime}m`}
             </Text>
           </View>
         </View>
@@ -1944,7 +2018,11 @@ function MapSearchOverlay({
                             fontSize: 10,
                           }}
                         >
-                          {r.waitTime} min
+                          {r.waitStatus === "darkgrey" 
+                            ? "Closed" 
+                            : r.waitTime < 0 
+                            ? "-- min" 
+                            : `${r.waitTime} min`}
                         </Text>
                       </View>
                     </View>

@@ -32,6 +32,7 @@ export function AddRestaurantModal({
   const [address, setAddress] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [cuisine, setCuisine] = useState("");
+  const [waitTime, setWaitTime] = useState("");
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -42,19 +43,21 @@ export function AddRestaurantModal({
 
     setSaving(true);
     try {
+      const generatedId = Math.floor(Date.now() % 2147483647); // Safe PG integer
       const { error } = await supabase.from("restaurants").insert([
         {
+          id: generatedId,
           name: name.trim(),
           description: description.trim() || null,
           address: address.trim(),
-          image: imageUrl.trim() || null,
-          cuisine: cuisine.trim() || "Various",
+          image_url: imageUrl.trim() || null,
+          cuisine_tags: [cuisine.trim() || "Various"],
           lat: coords.lat,
           long: coords.lng,
-          // Defaults for new restaurants
-          wait_status: "green",
-          current_wait_time: 0,
-          queue_length: 0,
+          current_wait_time: waitTime.trim() !== "" ? parseInt(waitTime) : -1,
+          is_waitlist_open: true,
+          rating: 0,
+          price_range: "$$",
         },
       ]);
 
@@ -147,6 +150,15 @@ export function AddRestaurantModal({
               placeholderTextColor="#666"
               value={address}
               onChangeText={setAddress}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Wait Time (minutes, leave blank for no wait)"
+              placeholderTextColor="#666"
+              value={waitTime}
+              onChangeText={setWaitTime}
+              keyboardType="number-pad"
             />
 
             <TextInput

@@ -126,7 +126,9 @@ export default function DiscoveryFeed() {
     return r.waitStatus === activeFilter;
   });
 
-  const trendingRestaurants = restaurants.slice(0, 3);
+  const trendingRestaurants = restaurants
+    .filter((r) => r.waitStatus !== "darkgrey" && r.waitStatus !== "grey")
+    .slice(0, 3);
   const nearbyRestaurants = filteredRestaurants;
 
   const handleRestaurantPress = useCallback(
