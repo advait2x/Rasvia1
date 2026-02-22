@@ -65,12 +65,13 @@ export function HeroCard({ restaurant, index, onPress }: HeroCardProps) {
             {restaurant.tags.slice(0, 2).map((tag, i) => (
               <View
                 key={tag}
-                className="bg-rasvia-saffron/20 rounded-full px-2.5 py-0.5 mr-2"
+                className="rounded-full px-2.5 py-0.5 mr-2"
+                style={{ backgroundColor: "rgba(255,153,51,0.35)" }}
               >
                 <Text
                   style={{
                     fontFamily: "Manrope_600SemiBold",
-                    color: "#FF9933",
+                    color: "rgba(255,153,51,0.95)",
                     fontSize: 11,
                   }}
                 >
@@ -92,17 +93,6 @@ export function HeroCard({ restaurant, index, onPress }: HeroCardProps) {
             numberOfLines={1}
           >
             {restaurant.name}
-          </Text>
-
-          <Text
-            style={{
-              fontFamily: "Manrope_500Medium",
-              color: "#999999",
-              fontSize: 15,
-              marginBottom: 10,
-            }}
-          >
-            {restaurant.cuisine}
           </Text>
 
           <View className="flex-row items-center justify-between">

@@ -452,11 +452,7 @@ export default function DiscoveryFeed() {
                 Explore Cuisines
               </Text>
             </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 8 }}
-            >
+            <View style={{ flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 20, gap: 10 }}>
               {[
                 { emoji: "🍛", label: "North Indian" },
                 { emoji: "🥘", label: "South Indian" },
@@ -464,22 +460,15 @@ export default function DiscoveryFeed() {
                 { emoji: "🦐", label: "Sri Lankan" },
                 { emoji: "🥡", label: "Indo-Chinese" },
                 { emoji: "🍰", label: "Desserts" },
-              ]
-                .filter((cuisine) => {
-                  // Only show cuisines that have at least one restaurant
-                  return restaurants.some(
-                    (r) => r.cuisine?.toLowerCase() === cuisine.label.toLowerCase()
-                  );
-                })
-                .map((cuisine, i) => (
-                  <CuisineChip
-                    key={cuisine.label}
-                    cuisine={cuisine}
-                    index={i}
-                    onPress={() => router.push(`/cuisine/${encodeURIComponent(cuisine.label)}` as any)}
-                  />
-                ))}
-            </ScrollView>
+              ].map((cuisine, i) => (
+                <CuisineChip
+                  key={cuisine.label}
+                  cuisine={cuisine}
+                  index={i}
+                  onPress={() => router.push(`/cuisine/${encodeURIComponent(cuisine.label)}` as any)}
+                />
+              ))}
+            </View>
           </Animated.View>
         </ScrollView>
 
@@ -510,43 +499,35 @@ function CuisineChip({
   return (
     <Animated.View
       entering={FadeInRight.delay(index * 60).duration(400)}
-      style={[animatedStyle]}
+      style={[animatedStyle, { width: (SCREEN_WIDTH - 40 - 10) / 2 }]}
     >
       <Pressable
-        className="items-center mr-4"
-        style={{ width: 76 }}
         onPress={() => {
-          if (Platform.OS !== "web") {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          }
+          if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           onPress();
         }}
-        onPressIn={() => {
-          pressScale.value = withSpring(0.92);
-        }}
-        onPressOut={() => {
-          pressScale.value = withSpring(1);
+        onPressIn={() => { pressScale.value = withSpring(0.93); }}
+        onPressOut={() => { pressScale.value = withSpring(1); }}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: "#1a1a1a",
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: "#2a2a2a",
+          paddingVertical: 14,
+          paddingHorizontal: 16,
+          gap: 10,
+          width: "100%",
         }}
       >
-        <View
-          className="items-center justify-center mb-2"
-          style={{
-            width: 66,
-            height: 66,
-            borderRadius: 33,
-            backgroundColor: "#1a1a1a",
-            borderWidth: 1,
-            borderColor: "#2a2a2a",
-          }}
-        >
-          <Text style={{ fontSize: 28 }}>{cuisine.emoji}</Text>
-        </View>
+        <Text style={{ fontSize: 22 }}>{cuisine.emoji}</Text>
         <Text
           style={{
             fontFamily: "Manrope_600SemiBold",
-            color: "#999999",
-            fontSize: 11,
-            textAlign: "center",
+            color: "#f5f5f5",
+            fontSize: 14,
+            flexShrink: 1,
           }}
           numberOfLines={1}
         >

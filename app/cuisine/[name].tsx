@@ -20,7 +20,6 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { WaitBadge } from "@/components/WaitBadge";
 import { supabase } from "@/lib/supabase";
 import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant, haversineDistance } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
@@ -40,6 +39,7 @@ export default function CuisinePage() {
   const { userCoords } = useLocation();
   const [restaurants, setRestaurants] = useState<UIRestaurant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<"wait" | "distance">("wait");
 
   const decodedName = decodeURIComponent(name || "");
   const emoji = cuisineEmojis[decodedName] || "🍽️";
@@ -50,7 +50,7 @@ export default function CuisinePage() {
         const { data, error } = await supabase
           .from('restaurants')
           .select('*')
-          .ilike('cuisine_category', decodedName)
+          .contains('cuisine_tags', [decodedName])
           .order('current_wait_time', { ascending: true });
 
         if (error) throw error;
@@ -81,7 +81,14 @@ export default function CuisinePage() {
     );
   }, [userCoords]);
 
-  const matchingRestaurants = restaurants;
+  const matchingRestaurants = [...restaurants].sort((a, b) => {
+    if (sortBy === "distance") {
+      const da = parseFloat(a.distance) || 9999;
+      const db = parseFloat(b.distance) || 9999;
+      return da - db;
+    }
+    return a.waitTime - b.waitTime;
+  });
 
   const handleRestaurantPress = useCallback(
     (id: string) => {
@@ -143,6 +150,50 @@ export default function CuisinePage() {
           </View>
         </Animated.View>
 
+
+        {/* Sort controls */}
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingBottom: 14, gap: 8 }}>
+          <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999999", fontSize: 12, marginRight: 4 }}>
+            Sort by
+          </Text>
+          {([
+            { key: "wait", label: "Wait Time", Icon: Clock },
+            { key: "distance", label: "Distance", Icon: MapPin },
+          ] as const).map(({ key, label, Icon }) => {
+            const active = sortBy === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                  setSortBy(key);
+                }}
+                style={{
+                  backgroundColor: active ? "rgba(255,153,51,0.2)" : "#1a1a1a",
+                  borderRadius: 20,
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderWidth: 1,
+                  borderColor: active ? "#FF9933" : "#2a2a2a",
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Icon size={12} color={active ? "#FF9933" : "#999999"} />
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_600SemiBold",
+                      color: active ? "#FF9933" : "#999999",
+                      fontSize: 12,
+                      marginLeft: 5,
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
 
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -210,6 +261,16 @@ export default function CuisinePage() {
   );
 }
 
+function waitColor(status: string): string {
+  switch (status) {
+    case "green": return "#22C55E";
+    case "amber": return "#F59E0B";
+    case "red":   return "#EF4444";
+    case "darkgrey": return "#666666";
+    default:      return "#999999"; // grey / unknown
+  }
+}
+
 function CuisineRestaurantCard({
   restaurant,
   index,
@@ -247,147 +308,89 @@ function CuisineRestaurantCard({
       >
         <Image
           source={{ uri: restaurant.image }}
-          style={{ width: "100%", height: 180 }}
+          style={{ width: "100%", height: 110 }}
           resizeMode="cover"
         />
-        <View style={{ position: "absolute", top: 12, right: 12 }}>
-          <WaitBadge
-            waitTime={restaurant.waitTime}
-            status={restaurant.waitStatus}
-            size="md"
-          />
-        </View>
-        <View style={{ padding: 16 }}>
+
+        {/* Info */}
+        <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+          {/* Tags */}
+          {restaurant.tags.length > 0 && (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+              {restaurant.tags.slice(0, 3).map((tag) => (
+                <View
+                  key={tag}
+                  style={{
+                    backgroundColor: "rgba(255,153,51,0.35)",
+                    borderRadius: 20,
+                    paddingHorizontal: 10,
+                    paddingVertical: 3,
+                    borderWidth: 1,
+                    borderColor: "rgba(255,153,51,0.5)",
+                  }}
+                >
+                  <Text style={{ fontFamily: "Manrope_600SemiBold", color: "rgba(255,153,51,0.95)", fontSize: 11 }}>
+                    {tag}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
           <Text
             numberOfLines={1}
             style={{
               fontFamily: "BricolageGrotesque_800ExtraBold",
               color: "#f5f5f5",
-              fontSize: 22,
+              fontSize: 18,
               letterSpacing: -0.3,
-              marginBottom: 4,
+              marginBottom: 8,
             }}
           >
             {restaurant.name}
           </Text>
-          <Text
-            style={{
-              fontFamily: "Manrope_500Medium",
-              color: "#999999",
-              fontSize: 13,
-              marginBottom: 12,
-            }}
-          >
-            {restaurant.cuisine}
-          </Text>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
+
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            {/* Rating */}
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Star size={13} color="#FF9933" fill="#FF9933" />
-              <Text
-                style={{
-                  fontFamily: "Manrope_700Bold",
-                  color: "#f5f5f5",
-                  fontSize: 14,
-                  marginLeft: 4,
-                }}
-              >
+              <Star size={12} color="#FF9933" fill="#FF9933" />
+              <Text style={{ fontFamily: "Manrope_700Bold", color: "#f5f5f5", fontSize: 13, marginLeft: 4 }}>
                 {restaurant.rating}
               </Text>
-              <Text
-                style={{
-                  fontFamily: "Manrope_500Medium",
-                  color: "#999999",
-                  fontSize: 12,
-                  marginLeft: 4,
-                }}
-              >
-                ({restaurant.reviewCount.toLocaleString()})
+            </View>
+
+            {/* Divider */}
+            <View style={{ width: 1, height: 12, backgroundColor: "#333" }} />
+
+            {/* Wait time */}
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Clock size={12} color={waitColor(restaurant.waitStatus)} />
+              <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: waitColor(restaurant.waitStatus), fontSize: 12, marginLeft: 4 }}>
+                {restaurant.waitTime >= 999 ? "Closed" : restaurant.waitTime < 0 ? "Unknown" : `${restaurant.waitTime}m`}
               </Text>
             </View>
+
+            {/* Divider */}
+            <View style={{ width: 1, height: 12, backgroundColor: "#333" }} />
+
+            {/* Queue */}
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Users size={13} color="#FF9933" />
-              <Text
-                style={{
-                  fontFamily: "JetBrainsMono_600SemiBold",
-                  color: "#f5f5f5",
-                  fontSize: 13,
-                  marginLeft: 4,
-                }}
-              >
+              <Users size={12} color="#999999" />
+              <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: "#f5f5f5", fontSize: 12, marginLeft: 4 }}>
                 {restaurant.queueLength}
               </Text>
-              <Text
-                style={{
-                  fontFamily: "Manrope_500Medium",
-                  color: "#999999",
-                  fontSize: 11,
-                  marginLeft: 4,
-                }}
-              >
+              <Text style={{ fontFamily: "Manrope_500Medium", color: "#999999", fontSize: 11, marginLeft: 4 }}>
                 in queue
               </Text>
             </View>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <MapPin size={12} color="#999999" />
-              <Text
-                style={{
-                  fontFamily: "Manrope_500Medium",
-                  color: "#999999",
-                  fontSize: 12,
-                  marginLeft: 3,
-                }}
-              >
+
+            {/* Distance pushed to far right */}
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-end" }}>
+              <MapPin size={11} color="#999999" />
+              <Text style={{ fontFamily: "Manrope_500Medium", color: "#999999", fontSize: 12, marginLeft: 3 }}>
                 {restaurant.distance}
               </Text>
             </View>
-            <Text
-              style={{
-                fontFamily: "JetBrainsMono_600SemiBold",
-                color: "#FF9933",
-                fontSize: 13,
-              }}
-            >
-              {restaurant.priceRange}
-            </Text>
-          </View>
-          <View
-            style={{
-              flexDirection: "row",
-              marginTop: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            {restaurant.tags.map((tag) => (
-              <View
-                key={tag}
-                style={{
-                  backgroundColor: "rgba(255, 153, 51, 0.12)",
-                  borderRadius: 12,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  marginRight: 6,
-                  marginBottom: 4,
-                  borderWidth: 1,
-                  borderColor: "rgba(255, 153, 51, 0.1)",
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: "Manrope_600SemiBold",
-                    color: "#FF9933",
-                    fontSize: 11,
-                  }}
-                >
-                  {tag}
-                </Text>
-              </View>
-            ))}
           </View>
         </View>
       </Pressable>

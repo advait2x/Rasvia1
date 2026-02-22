@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   ArrowLeft,
@@ -120,6 +120,23 @@ export default function RestaurantDetail() {
         });
     }
   }, [session?.user?.id, id]);
+
+  // Re-validate existing entry when screen regains focus (e.g. returning from waitlist)
+  useFocusEffect(
+    useCallback(() => {
+      if (!existingEntry?.id) return;
+      supabase
+        .from("waitlist_entries")
+        .select("status")
+        .eq("id", existingEntry.id)
+        .single()
+        .then(({ data }) => {
+          if (!data || data.status !== "waiting") {
+            setExistingEntry(null);
+          }
+        });
+    }, [existingEntry?.id])
+  );
 
   // ==================================================
   // FETCH RESTAURANT & MENU FROM SUPABASE
@@ -662,15 +679,15 @@ export default function RestaurantDetail() {
                     key={tag}
                     className="rounded-full px-2.5 py-0.5 mr-2"
                     style={{
-                      backgroundColor: "rgba(255, 153, 51, 0.2)",
+                      backgroundColor: "rgba(255, 153, 51, 0.35)",
                       borderWidth: 1,
-                      borderColor: "rgba(255, 153, 51, 0.15)",
+                      borderColor: "rgba(255, 153, 51, 0.5)",
                     }}
                   >
                     <Text
                       style={{
                         fontFamily: "Manrope_600SemiBold",
-                        color: "#FF9933",
+                        color: "rgba(255,153,51,0.95)",
                         fontSize: 11,
                       }}
                     >
@@ -696,17 +713,6 @@ export default function RestaurantDetail() {
 
         {/* Info Section */}
         <View className="px-5 pt-3 pb-4">
-          <Text
-            style={{
-              fontFamily: "Manrope_500Medium",
-              color: "#999999",
-              fontSize: 15,
-              marginBottom: 12,
-            }}
-          >
-            {restaurant.cuisine}
-          </Text>
-
           {/* Stats Row */}
           <View
             className="flex-row items-center justify-between py-4 px-4 rounded-2xl"
