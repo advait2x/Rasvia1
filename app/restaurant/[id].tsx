@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,10 @@ import {
   Dimensions,
   Alert,
   Platform,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -49,6 +53,7 @@ import {
   haversineDistance,
 } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
+import { useAuth } from "@/lib/auth-context";
 import {
   groupMembers,
   type CartItem,
@@ -64,6 +69,7 @@ export default function RestaurantDetail() {
   const router = useRouter();
   const { userCoords } = useLocation();
   const { isAdmin } = useAdminMode();
+  const { session } = useAuth();
 
   // ==================================================
   // STATE MANAGEMENT - Supabase Data
@@ -78,16 +84,95 @@ export default function RestaurantDetail() {
   const [isFavorited, setIsFavorited] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
+  // Party size + join flow
+  const [showPartySizePicker, setShowPartySizePicker] = useState(false);
+  const [partySize, setPartySize] = useState(2);
+  const [customParty, setCustomParty] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [partyLeaderName, setPartyLeaderName] = useState("");
+  const [existingEntry, setExistingEntry] = useState<{ id: string; party_size: number } | null>(null);
+
+  // Live queue count from waitlist_entries
+  const [liveQueueCount, setLiveQueueCount] = useState<number | null>(null);
+
+
+  // Fetch party leader name + check for existing active entry
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", session.user.id)
+      .single()
+      .then(({ data }) => { if (data?.full_name) setPartyLeaderName(data.full_name); });
+
+    if (id) {
+      supabase
+        .from("waitlist_entries")
+        .select("id, party_size")
+        .eq("restaurant_id", Number(id))
+        .eq("user_id", session.user.id)
+        .eq("status", "waiting")
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) setExistingEntry({ id: data.id, party_size: data.party_size });
+        });
+    }
+  }, [session?.user?.id, id]);
 
   // ==================================================
   // FETCH RESTAURANT & MENU FROM SUPABASE
   // ==================================================
   useEffect(() => {
-    if (id) {
-      fetchRestaurantData();
-      fetchMenu();
-    }
+    if (!id) return;
+
+    fetchRestaurantData();
+    fetchMenu();
+    fetchQueueCount();
+
+    // Real-time: restaurant row changes
+    const restSub = supabase
+      .channel(`restaurant:${id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "restaurants", filter: `id=eq.${id}` },
+        (payload) => {
+          setRestaurant((prev) =>
+            mapSupabaseToUI(payload.new as SupabaseRestaurant, prev?.lat && prev?.long ? { latitude: prev.lat, longitude: prev.long } : userCoords)
+          );
+        }
+      )
+      .subscribe();
+
+    // Real-time: waitlist_entries changes → refresh queue count
+    const queueSub = supabase
+      .channel(`queue-count:${id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "waitlist_entries", filter: `restaurant_id=eq.${id}` },
+        () => { fetchQueueCount(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(restSub);
+      supabase.removeChannel(queueSub);
+    };
   }, [id]);
+
+  async function fetchQueueCount() {
+    try {
+      const { count } = await supabase
+        .from("waitlist_entries")
+        .select("*", { count: "exact", head: true })
+        .eq("restaurant_id", Number(id))
+        .eq("status", "waiting");
+      setLiveQueueCount(count ?? 0);
+    } catch {
+      // silently ignore — fall back to calculated value
+    }
+  }
 
   async function fetchRestaurantData() {
     try {
@@ -249,11 +334,50 @@ export default function RestaurantDetail() {
   );
 
   const handleJoinWaitlist = useCallback(() => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    if (existingEntry) {
+      router.push(`/waitlist/${restaurant?.id}?entry_id=${existingEntry.id}&party_size=${existingEntry.party_size}` as any);
+      return;
     }
-    router.push(`/waitlist/${restaurant?.id}` as any);
-  }, [router, restaurant?.id]);
+    setCustomParty("");
+    setShowPartySizePicker(true);
+  }, [existingEntry, restaurant?.id, router]);
+
+  const handleConfirmJoin = useCallback(async () => {
+    const size = customParty.trim() !== "" ? parseInt(customParty, 10) : partySize;
+    if (isNaN(size) || size < 1) {
+      Alert.alert("Invalid", "Please enter a valid party size.");
+      return;
+    }
+    if (!session?.user?.id) {
+      Alert.alert("Not signed in", "Please sign in to join a waitlist.");
+      return;
+    }
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setJoining(true);
+    try {
+      const { data, error } = await supabase
+        .from("waitlist_entries")
+        .insert({
+          restaurant_id: Number(restaurant?.id),
+          user_id: session.user.id,
+          party_size: size,
+          party_leader_name: partyLeaderName || null,
+          status: "waiting",
+        })
+        .select("id, created_at")
+        .single();
+
+      if (error) throw error;
+      setExistingEntry({ id: data.id, party_size: size });
+      setShowPartySizePicker(false);
+      router.push(`/waitlist/${restaurant?.id}?entry_id=${data.id}&party_size=${size}` as any);
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Could not join waitlist.");
+    } finally {
+      setJoining(false);
+    }
+  }, [partySize, customParty, session, restaurant?.id, router]);
 
   const handleToggleFavorite = useCallback(() => {
     if (Platform.OS !== "web") {
@@ -269,6 +393,7 @@ export default function RestaurantDetail() {
 
   const isClosed = restaurant?.waitStatus === "darkgrey";
   const noWait = restaurant?.waitTime != null && restaurant.waitTime < 0;
+  const waitlistClosed = restaurant?.waitlistOpen === false;
 
   // Show loading or error state
   if (!restaurant) {
@@ -653,7 +778,7 @@ export default function RestaurantDetail() {
                     marginLeft: 4,
                   }}
                 >
-                  {restaurant.queueLength}
+                  {liveQueueCount ?? restaurant.queueLength}
                 </Text>
               </View>
               <Text
@@ -807,34 +932,34 @@ export default function RestaurantDetail() {
 
             <Animated.View style={[joinBtnStyle, { flex: 1 }]}>
               <Pressable
-                onPress={isClosed || noWait ? undefined : handleJoinWaitlist}
-                disabled={isClosed || noWait}
+                onPress={isClosed || noWait || waitlistClosed ? undefined : handleJoinWaitlist}
+                disabled={isClosed || noWait || waitlistClosed}
                 onPressIn={() => {
-                  if (!isClosed && !noWait) joinBtnScale.value = withSpring(0.95);
+                  if (!isClosed && !noWait && !waitlistClosed) joinBtnScale.value = withSpring(0.95);
                 }}
                 onPressOut={() => {
-                  if (!isClosed && !noWait) joinBtnScale.value = withSpring(1);
+                  if (!isClosed && !noWait && !waitlistClosed) joinBtnScale.value = withSpring(1);
                 }}
                 className="rounded-2xl py-4 items-center flex-row justify-center"
                 style={{
-                  backgroundColor: isClosed || noWait ? "#333333" : "#FF9933",
-                  shadowColor: isClosed || noWait ? "transparent" : "#FF9933",
+                  backgroundColor: isClosed || noWait || waitlistClosed ? "#333333" : "#FF9933",
+                  shadowColor: isClosed || noWait || waitlistClosed ? "transparent" : "#FF9933",
                   shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: isClosed || noWait ? 0 : 0.4,
+                  shadowOpacity: isClosed || noWait || waitlistClosed ? 0 : 0.4,
                   shadowRadius: 16,
-                  elevation: isClosed || noWait ? 0 : 10,
+                  elevation: isClosed || noWait || waitlistClosed ? 0 : 10,
                 }}
               >
-                <Clock size={18} color={isClosed || noWait ? "#999999" : "#0f0f0f"} strokeWidth={2.5} />
+                <Clock size={18} color={isClosed || noWait || waitlistClosed ? "#999999" : "#0f0f0f"} strokeWidth={2.5} />
                 <Text
                   style={{
                     fontFamily: "BricolageGrotesque_700Bold",
-                    color: isClosed || noWait ? "#999999" : "#0f0f0f",
+                    color: isClosed || noWait || waitlistClosed ? "#999999" : "#0f0f0f",
                     fontSize: 17,
                     marginLeft: 8,
                   }}
                 >
-                  {isClosed ? "Currently Closed" : noWait ? "Join Waitlist" : `Join Waitlist · ${restaurant.waitTime} min`}
+                  {waitlistClosed ? "Waitlist Closed" : isClosed ? "Currently Closed" : noWait ? "Join Waitlist" : `Join Waitlist · ${restaurant.waitTime} min`}
                 </Text>
               </Pressable>
             </Animated.View>
@@ -861,6 +986,102 @@ export default function RestaurantDetail() {
           }
         />
       )}
+
+      {/* Party Size Picker */}
+      <Modal visible={showPartySizePicker} transparent animationType="slide" onRequestClose={() => setShowPartySizePicker(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
+            <Pressable style={{ flex: 1 }} onPress={() => setShowPartySizePicker(false)} />
+            <View style={{
+              backgroundColor: "#1a1a1a",
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              padding: 28,
+              paddingBottom: Platform.OS === "ios" ? 44 : 28,
+              borderWidth: 1,
+              borderColor: "#2a2a2a",
+            }}>
+              <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 22, marginBottom: 6 }}>
+                Party Size
+              </Text>
+              <Text style={{ fontFamily: "Manrope_500Medium", color: "#999", fontSize: 14, marginBottom: 24 }}>
+                How many guests are in your party?
+              </Text>
+
+              {/* Quick select 1-5 */}
+              <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
+                {[1, 2, 3, 4, 5].map((n) => {
+                  const selected = customParty === "" && partySize === n;
+                  return (
+                    <Pressable
+                      key={n}
+                      onPress={() => { setPartySize(n); setCustomParty(""); if (Platform.OS !== "web") Haptics.selectionAsync(); }}
+                      style={{
+                        flex: 1,
+                        aspectRatio: 1,
+                        borderRadius: 16,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: selected ? "#FF9933" : "#0f0f0f",
+                        borderWidth: 1.5,
+                        borderColor: selected ? "#FF9933" : "#2a2a2a",
+                      }}
+                    >
+                      <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: selected ? "#0f0f0f" : "#f5f5f5", fontSize: 22 }}>
+                        {n}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {/* Custom number input */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 28 }}>
+                <TextInput
+                  value={customParty}
+                  onChangeText={(v) => setCustomParty(v.replace(/[^0-9]/g, ""))}
+                  keyboardType="number-pad"
+                  placeholder="Larger party? Enter number…"
+                  placeholderTextColor="#555"
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#0f0f0f",
+                    borderRadius: 12,
+                    borderWidth: 1.5,
+                    borderColor: customParty !== "" ? "#FF9933" : "#2a2a2a",
+                    paddingHorizontal: 14,
+                    paddingVertical: 13,
+                    color: "#f5f5f5",
+                    fontFamily: "JetBrainsMono_600SemiBold",
+                    fontSize: 16,
+                  }}
+                />
+              </View>
+
+              {/* Confirm button */}
+              <Pressable
+                onPress={handleConfirmJoin}
+                disabled={joining}
+                style={{
+                  backgroundColor: "#FF9933",
+                  borderRadius: 16,
+                  padding: 18,
+                  alignItems: "center",
+                  opacity: joining ? 0.7 : 1,
+                }}
+              >
+                {joining ? (
+                  <ActivityIndicator color="#0f0f0f" />
+                ) : (
+                  <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#0f0f0f", fontSize: 18 }}>
+                    Join Waitlist · {customParty !== "" ? (parseInt(customParty) || "?") : partySize} {(customParty !== "" ? (parseInt(customParty) || 1) : partySize) === 1 ? "guest" : "guests"}
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {showEditModal && restaurant && (
         <RestaurantEditModal

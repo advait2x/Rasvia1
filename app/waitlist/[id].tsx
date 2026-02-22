@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -7,9 +7,10 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import {
   ArrowLeft,
   X,
@@ -40,12 +41,14 @@ import {
   haversineDistance,
 } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
+import { useAuth } from "@/lib/auth-context";
 import type { MenuItem } from "@/data/mockData";
 
 export default function WaitlistStatus() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, entry_id, party_size } = useLocalSearchParams<{ id: string; entry_id?: string; party_size?: string }>();
   const router = useRouter();
   const { userCoords } = useLocation();
+  const { session } = useAuth();
 
   // ==========================================
   // SUPABASE STATE
@@ -54,9 +57,13 @@ export default function WaitlistStatus() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [position, setPosition] = useState(1);
-  const [estimatedMinutes, setEstimatedMinutes] = useState(5);
+  const [position, setPosition] = useState<number | null>(null);
+  const [totalInQueue, setTotalInQueue] = useState<number>(0);
   const [preOrderItems, setPreOrderItems] = useState<MenuItem[]>([]);
+  const [showTableReady, setShowTableReady] = useState(false);
+  const [showSeated, setShowSeated] = useState(false);
+  const [partyOwnerName, setPartyOwnerName] = useState<string>("");
+  const myPartySize = party_size ? parseInt(party_size, 10) : 1;
 
   // ==========================================
   // FETCH FROM SUPABASE
@@ -80,8 +87,6 @@ export default function WaitlistStatus() {
         if (restData) {
           const uiRestaurant = mapSupabaseToUI(restData as SupabaseRestaurant, userCoords);
           setRestaurant(uiRestaurant);
-          setPosition(uiRestaurant.queueLength);
-          setEstimatedMinutes(uiRestaurant.waitTime);
         }
 
         // 2. Fetch menu items for this restaurant
@@ -122,7 +127,143 @@ export default function WaitlistStatus() {
     }
 
     fetchData();
-  }, [id]);
+    fetchPartyOwnerName();
+    if (entry_id) {
+      fetchPosition(entry_id);
+      checkEntryStatus(entry_id);
+    }
+
+    // Real-time: restaurant row changes (wait time, etc.)
+    const restSub = supabase
+      .channel(`waitlist-restaurant:${id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "restaurants", filter: `id=eq.${id}` },
+        (payload) => {
+          const updated = mapSupabaseToUI(payload.new as SupabaseRestaurant, userCoords);
+          setRestaurant(updated);
+        }
+      )
+      .subscribe();
+
+    // Real-time: waitlist_entries changes → refresh position
+    const queueSub = supabase
+      .channel(`waitlist-queue:${id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "waitlist_entries", filter: `restaurant_id=eq.${id}` },
+        () => { if (entry_id) fetchPosition(entry_id); }
+      )
+      .subscribe();
+
+    // Real-time: watch OUR entry for notified_at or seated status
+    const notifySub = entry_id
+      ? supabase
+          .channel(`my-entry:${entry_id}`)
+          .on(
+            "postgres_changes",
+            { event: "UPDATE", schema: "public", table: "waitlist_entries", filter: `id=eq.${entry_id}` },
+            (payload) => {
+              if (payload.new?.status === "seated" && payload.old?.status !== "seated") {
+                triggerSeated();
+              } else if (payload.new?.notified_at && !payload.old?.notified_at) {
+                triggerTableReady();
+              }
+            }
+          )
+          .subscribe()
+      : null;
+
+    return () => {
+      supabase.removeChannel(restSub);
+      supabase.removeChannel(queueSub);
+      if (notifySub) supabase.removeChannel(notifySub);
+    };
+  }, [id, entry_id]);
+
+  async function fetchPartyOwnerName() {
+    if (!session?.user?.id) return;
+    try {
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", session.user.id)
+        .single();
+      if (data?.full_name) setPartyOwnerName(data.full_name);
+    } catch {
+      // silently ignore
+    }
+  }
+
+  async function checkEntryStatus(entryId: string) {
+    try {
+      const { data } = await supabase
+        .from("waitlist_entries")
+        .select("notified_at, status")
+        .eq("id", entryId)
+        .single();
+      if (data?.status === "seated") {
+        triggerSeated();
+      } else if (data?.notified_at) {
+        triggerTableReady();
+      }
+    } catch {
+      // silently ignore
+    }
+  }
+
+  function triggerTableReady() {
+    setShowTableReady(true);
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 600);
+      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 1200);
+    }
+  }
+
+  function triggerSeated() {
+    setShowTableReady(false);
+    setShowSeated(true);
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 500);
+    }
+    // Auto-navigate back after 4 seconds
+    setTimeout(() => router.replace("/"), 4000);
+  }
+
+  async function fetchPosition(entryId: string) {
+    try {
+      // Get our entry's created_at
+      const { data: myEntry } = await supabase
+        .from("waitlist_entries")
+        .select("created_at")
+        .eq("id", entryId)
+        .single();
+
+      if (!myEntry) return;
+
+      // Count entries ahead of us (earlier created_at, still waiting)
+      const { count: ahead } = await supabase
+        .from("waitlist_entries")
+        .select("*", { count: "exact", head: true })
+        .eq("restaurant_id", Number(id))
+        .eq("status", "waiting")
+        .lt("created_at", myEntry.created_at);
+
+      // Total waiting
+      const { count: total } = await supabase
+        .from("waitlist_entries")
+        .select("*", { count: "exact", head: true })
+        .eq("restaurant_id", Number(id))
+        .eq("status", "waiting");
+
+      setPosition((ahead ?? 0) + 1);
+      setTotalInQueue(total ?? 0);
+    } catch {
+      // silently ignore
+    }
+  }
 
   // Recalculate distance when userCoords arrives after initial fetch
   useEffect(() => {
@@ -136,25 +277,6 @@ export default function WaitlistStatus() {
     });
   }, [userCoords]);
 
-  // Simulate live queue updates
-  useEffect(() => {
-    if (!restaurant) return;
-
-    const interval = setInterval(() => {
-      setPosition((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          return 1;
-        }
-        if (Platform.OS !== "web") {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        }
-        return prev - 1;
-      });
-      setEstimatedMinutes((prev) => Math.max(1, prev - 3));
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [restaurant]);
 
   const handleLeaveQueue = useCallback(() => {
     if (Platform.OS !== "web") {
@@ -168,11 +290,19 @@ export default function WaitlistStatus() {
         {
           text: "Leave",
           style: "destructive",
-          onPress: () => router.back(),
+          onPress: async () => {
+            if (entry_id) {
+              await supabase
+                .from("waitlist_entries")
+                .update({ status: "cancelled" })
+                .eq("id", entry_id);
+            }
+            router.back();
+          },
         },
       ]
     );
-  }, [router]);
+  }, [router, entry_id]);
 
   const handleAddAppetizer = useCallback((item: MenuItem) => {
     if (Platform.OS !== "web") {
@@ -222,6 +352,7 @@ export default function WaitlistStatus() {
 
   return (
     <View className="flex-1 bg-rasvia-black">
+      <Stack.Screen options={{ gestureEnabled: false }} />
       <SafeAreaView className="flex-1" edges={["top"]}>
         {/* Header */}
         <Animated.View
@@ -301,14 +432,29 @@ export default function WaitlistStatus() {
                 {restaurant.address}
               </Text>
             </View>
+            {partyOwnerName !== "" && (
+              <View className="flex-row items-center mt-1">
+                <UtensilsCrossed size={13} color="#FF9933" />
+                <Text
+                  style={{
+                    fontFamily: "Manrope_600SemiBold",
+                    color: "#FF9933",
+                    fontSize: 13,
+                    marginLeft: 4,
+                  }}
+                >
+                  Party under {partyOwnerName}
+                </Text>
+              </View>
+            )}
           </Animated.View>
 
           {/* Waitlist Ring */}
           <View className="items-center mb-10">
             <WaitlistRing
-              position={position}
-              totalInQueue={restaurant.queueLength}
-              estimatedMinutes={estimatedMinutes}
+              position={position ?? 1}
+              totalInQueue={totalInQueue || restaurant.queueLength}
+              estimatedMinutes={restaurant.waitTime > 0 ? restaurant.waitTime : 0}
               restaurantName={restaurant.name}
             />
           </View>
@@ -347,7 +493,7 @@ export default function WaitlistStatus() {
                     fontSize: 28,
                   }}
                 >
-                  {restaurant.partySize || 1}
+                  {myPartySize}
                 </Text>
                 <Text
                   style={{
@@ -489,102 +635,6 @@ export default function WaitlistStatus() {
             </Animated.View>
           )}
 
-          {/* Timeline */}
-          <Animated.View
-            entering={FadeInUp.delay(700).duration(500)}
-            className="px-5 mt-8"
-          >
-            <Text
-              style={{
-                fontFamily: "BricolageGrotesque_800ExtraBold",
-                color: "#f5f5f5",
-                fontSize: 24,
-                marginBottom: 16,
-              }}
-            >
-              Queue Timeline
-            </Text>
-
-            {[
-              {
-                label: "Joined Queue",
-                time: "Just now",
-                active: true,
-                color: "#22C55E",
-              },
-              {
-                label: "Getting Closer",
-                time: `~${Math.max(1, Math.round(estimatedMinutes / 2))} min`,
-                active: position <= Math.ceil(restaurant.queueLength / 2),
-                color: "#F59E0B",
-              },
-              {
-                label: "Almost There",
-                time: "~2 min",
-                active: position <= 2,
-                color: "#FF9933",
-              },
-              {
-                label: "Table Ready!",
-                time: "",
-                active: position <= 1,
-                color: "#FF9933",
-              },
-            ].map((step, index) => (
-              <View key={step.label} className="flex-row mb-4">
-                <View className="items-center mr-4" style={{ width: 20 }}>
-                  <View
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: 7,
-                      backgroundColor: step.active ? step.color : "#333333",
-                      shadowColor: step.active ? step.color : "transparent",
-                      shadowOffset: { width: 0, height: 0 },
-                      shadowOpacity: step.active ? 0.7 : 0,
-                      shadowRadius: 10,
-                    }}
-                  />
-                  {index < 3 && (
-                    <View
-                      style={{
-                        width: 2,
-                        height: 32,
-                        backgroundColor: step.active ? step.color : "#333333",
-                        marginTop: 4,
-                        opacity: step.active ? 0.6 : 0.3,
-                      }}
-                    />
-                  )}
-                </View>
-                <View className="flex-1">
-                  <Text
-                    style={{
-                      fontFamily: step.active
-                        ? "Manrope_700Bold"
-                        : "Manrope_500Medium",
-                      color: step.active ? "#f5f5f5" : "#555555",
-                      fontSize: 16,
-                    }}
-                  >
-                    {step.label}
-                  </Text>
-                  {step.time && (
-                    <Text
-                      style={{
-                        fontFamily: "JetBrainsMono_600SemiBold",
-                        color: step.active ? step.color : "#444444",
-                        fontSize: 12,
-                        marginTop: 2,
-                      }}
-                    >
-                      {step.time}
-                    </Text>
-                  )}
-                </View>
-              </View>
-            ))}
-          </Animated.View>
         </ScrollView>
 
         {/* Bottom Action */}
@@ -634,6 +684,168 @@ export default function WaitlistStatus() {
           </SafeAreaView>
         </View>
       </SafeAreaView>
+
+      {/* Seated / Enjoy Your Meal screen */}
+      <Modal visible={showSeated} transparent animationType="fade" onRequestClose={() => {}}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#0f0f0f",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 32,
+          }}
+        >
+          <Animated.View entering={FadeInDown.springify().damping(14)} style={{ alignItems: "center" }}>
+            <View
+              style={{
+                width: 100,
+                height: 100,
+                borderRadius: 50,
+                backgroundColor: "rgba(255,153,51,0.15)",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 28,
+                borderWidth: 2,
+                borderColor: "rgba(255,153,51,0.4)",
+              }}
+            >
+              <UtensilsCrossed size={44} color="#FF9933" />
+            </View>
+            <Text
+              style={{
+                fontFamily: "BricolageGrotesque_800ExtraBold",
+                color: "#f5f5f5",
+                fontSize: 34,
+                textAlign: "center",
+                marginBottom: 12,
+                letterSpacing: -0.5,
+              }}
+            >
+              Enjoy your meal!
+            </Text>
+            <Text
+              style={{
+                fontFamily: "Manrope_500Medium",
+                color: "#999999",
+                fontSize: 16,
+                textAlign: "center",
+                lineHeight: 24,
+                marginBottom: 8,
+              }}
+            >
+              {partyOwnerName ? `${partyOwnerName}'s party` : "Your party"} has been seated at {restaurant?.name}.
+            </Text>
+            <Text
+              style={{
+                fontFamily: "Manrope_400Regular",
+                color: "#555",
+                fontSize: 13,
+                textAlign: "center",
+              }}
+            >
+              Taking you back in a moment…
+            </Text>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      {/* Table Ready Notification */}
+      <Modal visible={showTableReady} transparent animationType="fade" onRequestClose={() => {}}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.85)",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 28,
+          }}
+        >
+          <Animated.View
+            entering={FadeInDown.springify().damping(14)}
+            style={{
+              backgroundColor: "#1a1a1a",
+              borderRadius: 28,
+              padding: 32,
+              alignItems: "center",
+              borderWidth: 1.5,
+              borderColor: "#22C55E",
+              width: "100%",
+              shadowColor: "#22C55E",
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.4,
+              shadowRadius: 24,
+              elevation: 20,
+            }}
+          >
+            {/* Pulsing icon */}
+            <View
+              style={{
+                width: 80,
+                height: 80,
+                borderRadius: 40,
+                backgroundColor: "rgba(34,197,94,0.15)",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 20,
+                borderWidth: 2,
+                borderColor: "rgba(34,197,94,0.4)",
+              }}
+            >
+              <UtensilsCrossed size={36} color="#22C55E" />
+            </View>
+
+            <Text
+              style={{
+                fontFamily: "BricolageGrotesque_800ExtraBold",
+                color: "#f5f5f5",
+                fontSize: 28,
+                textAlign: "center",
+                marginBottom: 8,
+              }}
+            >
+              Your Table is Ready!
+            </Text>
+            <Text
+              style={{
+                fontFamily: "Manrope_500Medium",
+                color: "#999999",
+                fontSize: 15,
+                textAlign: "center",
+                marginBottom: 32,
+                lineHeight: 22,
+              }}
+            >
+              {restaurant?.name} is ready for your party of {myPartySize}. Please head to the host stand.
+            </Text>
+
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                setShowTableReady(false);
+              }}
+              style={{
+                backgroundColor: "#22C55E",
+                borderRadius: 16,
+                paddingVertical: 16,
+                paddingHorizontal: 32,
+                alignItems: "center",
+                width: "100%",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "BricolageGrotesque_700Bold",
+                  color: "#0f0f0f",
+                  fontSize: 18,
+                }}
+              >
+                I'm on my way! 🙌
+              </Text>
+            </Pressable>
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }

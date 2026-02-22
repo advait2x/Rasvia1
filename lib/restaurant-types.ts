@@ -15,6 +15,7 @@ export interface SupabaseRestaurant {
     current_wait_time: number;
     is_waitlist_open: boolean;
     is_enabled: boolean;
+    waitlist_open: boolean;
     rating: number;
     price_range: string;
     cuisine_tags: string[] | null;
@@ -49,6 +50,7 @@ export interface UIRestaurant {
     lat: number | null;
     long: number | null;
     isEnabled: boolean;
+    waitlistOpen: boolean;
 }
 
 // ==========================================
@@ -158,6 +160,7 @@ export function mapSupabaseToUI(
         lat: hasValidCoords ? lat : null,
         long: hasValidCoords ? lng : null,
         isEnabled: restaurant.is_enabled !== false, // default true if column missing
+        waitlistOpen: restaurant.waitlist_open !== false, // default true if column missing
     };
 }
 
