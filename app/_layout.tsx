@@ -28,6 +28,7 @@ import {
 } from "@expo-google-fonts/jetbrains-mono";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { LocationProvider } from "@/lib/location-context";
+import { NotificationsProvider } from "@/lib/notifications-context";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -159,7 +160,9 @@ export default function RootLayout() {
           <StatusBar style="light" />
           <AuthProvider>
             <LocationProvider>
-              <AuthGate />
+              <NotificationsProvider>
+                <AuthGate />
+              </NotificationsProvider>
             </LocationProvider>
           </AuthProvider>
         </ThemeProvider>

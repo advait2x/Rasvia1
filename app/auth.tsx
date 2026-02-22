@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { Mail, Lock, Eye, EyeOff } from "lucide-react-native";
+import { Mail, Lock, Eye, EyeOff, Phone } from "lucide-react-native";
 import Animated, {
     FadeIn,
     FadeInUp,
@@ -29,10 +29,13 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function AuthScreen() {
     const [isSignUp, setIsSignUp] = useState(false);
+    const [usePhone, setUsePhone] = useState(false);
     const [email, setEmail] = useState("");
+    const [phoneSignIn, setPhoneSignIn] = useState("");
     const [password, setPassword] = useState("");
     const [firstName, setFirstName] = useState("");
     const [lastInitial, setLastInitial] = useState("");
+    const [phone, setPhone] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [notification, setNotification] = useState<{
@@ -47,22 +50,33 @@ export default function AuthScreen() {
     }));
 
     async function handleAuth() {
-        if (!email || !password) {
-            setNotification({
-                visible: true,
-                message: "Please enter both email and password.",
-                type: "error",
-            });
-            return;
+        // Sign-in validation
+        if (!isSignUp) {
+            const identifier = usePhone ? phoneSignIn.trim() : email.trim();
+            if (!identifier || !password) {
+                setNotification({
+                    visible: true,
+                    message: `Please enter your ${usePhone ? "phone number" : "email"} and password.`,
+                    type: "error",
+                });
+                return;
+            }
         }
 
-        if (isSignUp && (!firstName || !lastInitial)) {
-            setNotification({
-                visible: true,
-                message: "Please enter your first name and last initial.",
-                type: "error",
-            });
-            return;
+        // Sign-up validation
+        if (isSignUp) {
+            if (!email || !password) {
+                setNotification({ visible: true, message: "Please enter both email and password.", type: "error" });
+                return;
+            }
+            if (!firstName || !lastInitial) {
+                setNotification({ visible: true, message: "Please enter your first name and last initial.", type: "error" });
+                return;
+            }
+            if (!phone.trim()) {
+                setNotification({ visible: true, message: "Please enter your phone number.", type: "error" });
+                return;
+            }
         }
 
         setLoading(true);
@@ -74,7 +88,6 @@ export default function AuthScreen() {
                 });
                 if (error) throw error;
 
-                // Create profile with name
                 if (data.user) {
                     const fullName = `${firstName.trim()} ${lastInitial.trim().toUpperCase()}.`;
                     const { error: profileError } = await supabase
@@ -82,21 +95,38 @@ export default function AuthScreen() {
                         .upsert({
                             id: data.user.id,
                             full_name: fullName,
+                            email: email.trim(),
+                            phone_number: phone.trim(),
                             created_at: new Date().toISOString(),
                         });
                     if (profileError) console.error('Profile creation error:', profileError);
                 }
-                // Session change will be handled by AuthProvider → auto redirect
+            } else if (usePhone) {
+                // Phone sign-in: look up email stored in profiles, then sign in with password
+                const rawPhone = phoneSignIn.trim();
+                const { data: profile, error: lookupError } = await supabase
+                    .from('profiles')
+                    .select('email')
+                    .eq('phone_number', rawPhone)
+                    .maybeSingle();
+
+                if (lookupError || !profile?.email) {
+                    throw new Error("No account found with that phone number.");
+                }
+
+                const { error } = await supabase.auth.signInWithPassword({
+                    email: profile.email,
+                    password,
+                });
+                if (error) throw error;
             } else {
                 const { error } = await supabase.auth.signInWithPassword({
                     email: email.trim(),
                     password,
                 });
                 if (error) throw error;
-                // Session change will be handled by AuthProvider → auto redirect
             }
         } catch (error: any) {
-            // Show in-app notification instead of Alert
             const message = error.message || "Something went wrong.";
             setNotification({
                 visible: true,
@@ -300,10 +330,102 @@ export default function AuthScreen() {
                                 >
                                     First name, last initial
                                 </Text>
+
+                                {/* Phone Number Input */}
+                                <View
+                                    style={{
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                        backgroundColor: "#262626",
+                                        borderRadius: 16,
+                                        borderWidth: 1,
+                                        borderColor: "#333333",
+                                        paddingHorizontal: 16,
+                                        marginBottom: 14,
+                                        height: 56,
+                                    }}
+                                >
+                                    <Phone size={18} color="#999999" />
+                                    <TextInput
+                                        style={{
+                                            flex: 1,
+                                            color: "#f5f5f5",
+                                            fontFamily: "Manrope_500Medium",
+                                            fontSize: 15,
+                                            marginLeft: 12,
+                                        }}
+                                        placeholder="Phone number"
+                                        placeholderTextColor="#666666"
+                                        value={phone}
+                                        onChangeText={setPhone}
+                                        keyboardType="phone-pad"
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                    />
+                                </View>
                             </>
                         )}
 
-                        {/* Email Input */}
+                        {/* Email / Phone toggle (sign-in only) */}
+                        {!isSignUp && (
+                            <View
+                                style={{
+                                    flexDirection: "row",
+                                    backgroundColor: "#1a1a1a",
+                                    borderRadius: 12,
+                                    borderWidth: 1,
+                                    borderColor: "#333333",
+                                    marginBottom: 14,
+                                    padding: 4,
+                                }}
+                            >
+                                <Pressable
+                                    onPress={() => setUsePhone(false)}
+                                    style={{
+                                        flex: 1,
+                                        height: 36,
+                                        borderRadius: 9,
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        backgroundColor: !usePhone ? "#FF9933" : "transparent",
+                                    }}
+                                >
+                                    <Text
+                                        style={{
+                                            fontFamily: "Manrope_600SemiBold",
+                                            color: !usePhone ? "#0f0f0f" : "#999999",
+                                            fontSize: 13,
+                                        }}
+                                    >
+                                        Email
+                                    </Text>
+                                </Pressable>
+                                <Pressable
+                                    onPress={() => setUsePhone(true)}
+                                    style={{
+                                        flex: 1,
+                                        height: 36,
+                                        borderRadius: 9,
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        backgroundColor: usePhone ? "#FF9933" : "transparent",
+                                    }}
+                                >
+                                    <Text
+                                        style={{
+                                            fontFamily: "Manrope_600SemiBold",
+                                            color: usePhone ? "#0f0f0f" : "#999999",
+                                            fontSize: 13,
+                                        }}
+                                    >
+                                        Phone
+                                    </Text>
+                                </Pressable>
+                            </View>
+                        )}
+
+                        {/* Email Input (sign-up always, sign-in when email mode) */}
+                        {(!usePhone || isSignUp) && (
                         <View
                             style={{
                                 flexDirection: "row",
@@ -335,6 +457,42 @@ export default function AuthScreen() {
                                 autoCorrect={false}
                             />
                         </View>
+                        )}
+
+                        {/* Phone Input (sign-in phone mode only) */}
+                        {usePhone && !isSignUp && (
+                        <View
+                            style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                backgroundColor: "#262626",
+                                borderRadius: 16,
+                                borderWidth: 1,
+                                borderColor: "#333333",
+                                paddingHorizontal: 16,
+                                marginBottom: 14,
+                                height: 56,
+                            }}
+                        >
+                            <Phone size={18} color="#999999" />
+                            <TextInput
+                                style={{
+                                    flex: 1,
+                                    color: "#f5f5f5",
+                                    fontFamily: "Manrope_500Medium",
+                                    fontSize: 15,
+                                    marginLeft: 12,
+                                }}
+                                placeholder="Phone number"
+                                placeholderTextColor="#666666"
+                                value={phoneSignIn}
+                                onChangeText={setPhoneSignIn}
+                                keyboardType="phone-pad"
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                            />
+                        </View>
+                        )}
 
                         {/* Password Input */}
                         <View
@@ -430,7 +588,12 @@ export default function AuthScreen() {
                                 if (Platform.OS !== "web") {
                                     Haptics.selectionAsync();
                                 }
-                                setIsSignUp(!isSignUp);
+                        setIsSignUp(!isSignUp);
+                        setPhone("");
+                        setPhoneSignIn("");
+                        setFirstName("");
+                        setLastInitial("");
+                        setUsePhone(false);
                             }}
                             style={{
                                 marginTop: 20,

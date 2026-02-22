@@ -33,6 +33,7 @@ import {
   Edit2,
   Activity,
   Shield,
+  Phone,
 } from "lucide-react-native";
 import Animated, {
   FadeIn,
@@ -98,10 +99,13 @@ export default function ProfileSettingsScreen() {
   const { reloadLocationPrefs, setUserCoordsOverride } = useLocation();
   const [userEmail, setUserEmail] = useState("");
   const [fullName, setFullName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [tempFirstName, setTempFirstName] = useState("");
   const [tempLastInitial, setTempLastInitial] = useState("");
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [tempPhone, setTempPhone] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -150,7 +154,7 @@ export default function ProfileSettingsScreen() {
         const { data, error } = await supabase
           .from("profiles")
           .select(
-            "location_city, dietary_type, restricted_days, full_name, created_at, saved_address, home_lat, home_long",
+            "location_city, dietary_type, restricted_days, full_name, created_at, saved_address, home_lat, home_long, phone_number",
           )
           .eq("id", session.user.id)
           .maybeSingle();
@@ -174,6 +178,7 @@ export default function ProfileSettingsScreen() {
           setOrigDays(r);
 
           setFullName(data.full_name || "");
+          setPhoneNumber((data as any).phone_number || "");
           setCreatedAt(data.created_at);
 
           const sAddr = data.saved_address || "";
@@ -314,6 +319,32 @@ export default function ProfileSettingsScreen() {
       Alert.alert("Error", err.message || "Could not update name.");
     }
   }, [session, tempFirstName, tempLastInitial]);
+
+  const handleSavePhone = useCallback(async () => {
+    if (!session?.user?.id) return;
+    const cleaned = tempPhone.trim();
+    if (!cleaned) {
+      Alert.alert("Error", "Phone number cannot be empty.");
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ phone_number: cleaned, updated_at: new Date().toISOString() })
+        .eq("id", session.user.id);
+
+      if (error) throw error;
+
+      setPhoneNumber(cleaned);
+      setEditingPhone(false);
+
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Could not update phone number.");
+    }
+  }, [session, tempPhone]);
 
   async function handleLogout() {
     if (Platform.OS !== "web") {
@@ -537,6 +568,33 @@ export default function ProfileSettingsScreen() {
             >
               {userEmail || ""}
             </Text>
+
+            {/* Phone row with edit button */}
+            <Pressable
+              onPress={() => {
+                setTempPhone(phoneNumber);
+                setEditingPhone(true);
+              }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 4,
+              }}
+            >
+              <Phone size={11} color="#666666" style={{ marginRight: 4 }} />
+              <Text
+                style={{
+                  fontFamily: "Manrope_500Medium",
+                  color: phoneNumber ? "#999999" : "#555555",
+                  fontSize: 13,
+                  marginRight: 4,
+                }}
+              >
+                {phoneNumber || "Add phone number"}
+              </Text>
+              <Edit2 size={10} color="#FF9933" />
+            </Pressable>
+
             <Text
               style={{
                 fontFamily: "Manrope_500Medium",
@@ -1285,6 +1343,120 @@ export default function ProfileSettingsScreen() {
             </Pressable>
           </Animated.View>
         </ScrollView>
+
+        {/* Phone Edit Modal */}
+        {editingPhone && (
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0, 0, 0, 0.7)",
+              alignItems: "center",
+              justifyContent: "center",
+              paddingHorizontal: 24,
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: "#1a1a1a",
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: "#2a2a2a",
+                padding: 24,
+                width: "100%",
+                maxWidth: 400,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "BricolageGrotesque_700Bold",
+                  color: "#f5f5f5",
+                  fontSize: 20,
+                  marginBottom: 16,
+                }}
+              >
+                Edit Phone Number
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "Manrope_600SemiBold",
+                  color: "#999",
+                  fontSize: 12,
+                  marginBottom: 8,
+                }}
+              >
+                Phone Number
+              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: "#262626",
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: "#333",
+                  paddingHorizontal: 14,
+                  height: 48,
+                  marginBottom: 20,
+                }}
+              >
+                <Phone size={16} color="#999999" />
+                <TextInput
+                  value={tempPhone}
+                  onChangeText={setTempPhone}
+                  style={{
+                    flex: 1,
+                    color: "#f5f5f5",
+                    fontFamily: "Manrope_500Medium",
+                    fontSize: 15,
+                    marginLeft: 10,
+                  }}
+                  placeholderTextColor="#666"
+                  placeholder="e.g. 9725551234"
+                  keyboardType="phone-pad"
+                  autoFocus
+                />
+              </View>
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <Pressable
+                  onPress={() => setEditingPhone(false)}
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#262626",
+                    borderRadius: 12,
+                    height: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: "#333",
+                  }}
+                >
+                  <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 15 }}>
+                    Cancel
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleSavePhone}
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#FF9933",
+                    borderRadius: 12,
+                    height: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#0f0f0f", fontSize: 15 }}>
+                    Save
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Name Edit Modal */}
         {editingName && (

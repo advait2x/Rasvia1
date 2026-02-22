@@ -35,6 +35,7 @@ import {
 } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
 import { useAdminMode } from "@/hooks/useAdminMode";
+import { useNotifications } from "@/lib/notifications-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -42,6 +43,7 @@ export default function DiscoveryFeed() {
   const router = useRouter();
   const { userCoords, locationLabel } = useLocation();
   const { isAdmin } = useAdminMode();
+  const { unreadCount } = useNotifications();
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [showSearch, setShowSearch] = useState(false);
 
@@ -258,19 +260,35 @@ export default function DiscoveryFeed() {
               }}
             >
               <Bell size={20} color="#f5f5f5" />
-              <View
-                style={{
-                  position: "absolute",
-                  top: 10,
-                  right: 11,
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: "#EF4444",
-                  borderWidth: 1.5,
-                  borderColor: "#1a1a1a",
-                }}
-              />
+              {unreadCount > 0 && (
+                <View
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
+                    minWidth: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    backgroundColor: "#EF4444",
+                    borderWidth: 1.5,
+                    borderColor: "#1a1a1a",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingHorizontal: unreadCount > 9 ? 3 : 0,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "JetBrainsMono_600SemiBold",
+                      color: "#fff",
+                      fontSize: 8,
+                      lineHeight: 10,
+                    }}
+                  >
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </Text>
+                </View>
+              )}
             </Pressable>
             <Pressable
               onPress={() => {

@@ -54,6 +54,7 @@ import {
 } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
 import { useAuth } from "@/lib/auth-context";
+import { useNotifications } from "@/lib/notifications-context";
 import {
   groupMembers,
   type CartItem,
@@ -70,6 +71,7 @@ export default function RestaurantDetail() {
   const { userCoords } = useLocation();
   const { isAdmin } = useAdminMode();
   const { session } = useAuth();
+  const { addEvent, refreshActive } = useNotifications();
 
   // ==================================================
   // STATE MANAGEMENT - Supabase Data
@@ -388,6 +390,18 @@ export default function RestaurantDetail() {
       if (error) throw error;
       setExistingEntry({ id: data.id, party_size: size });
       setShowPartySizePicker(false);
+
+      // Record "joined" notification event and refresh active entries
+      addEvent({
+        type: "joined",
+        restaurantName: restaurant?.name ?? "Restaurant",
+        restaurantId: String(restaurant?.id),
+        entryId: data.id,
+        partySize: size,
+        timestamp: new Date().toISOString(),
+      });
+      refreshActive();
+
       router.push(`/waitlist/${restaurant?.id}?entry_id=${data.id}&party_size=${size}` as any);
     } catch (err: any) {
       Alert.alert("Error", err.message || "Could not join waitlist.");
