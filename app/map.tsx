@@ -305,11 +305,17 @@ export default function MapScreen() {
     });
   }, [restaurants, userLocation]);
 
+  // Non-admin users only see enabled restaurants; admins see all.
+  const visibleRestaurants = useMemo(
+    () => isAdmin ? restaurantsWithDistance : restaurantsWithDistance.filter((r) => r.isEnabled),
+    [restaurantsWithDistance, isAdmin]
+  );
+
   // Restaurants with valid coordinates — this is the ONLY marker list.
   // It changes only when restaurant data changes (from Supabase), never during zoom.
   const mappableRestaurants = useMemo(
-    () => restaurantsWithDistance.filter((r) => r.lat != null && r.long != null),
-    [restaurantsWithDistance]
+    () => visibleRestaurants.filter((r) => r.lat != null && r.long != null),
+    [visibleRestaurants]
   );
 
   // ==============================
@@ -598,6 +604,7 @@ export default function MapScreen() {
             name: adminPanelRestaurant.name,
             waitTime: adminPanelRestaurant.waitTime,
             waitStatus: adminPanelRestaurant.waitStatus,
+            isEnabled: adminPanelRestaurant.isEnabled,
           }}
           isWaitlistOpen={adminPanelRestaurant.waitTime < 999}
           onClose={() => setAdminPanelRestaurant(null)}
@@ -808,7 +815,7 @@ export default function MapScreen() {
       )}
 
       {/* Admin Add Restaurant FAB */}
-      {isAdmin && !showMapSearch && !showNearbyList && !selectedRestaurant && !showAddModal && !isSettingLocation && (
+      {isAdmin && !showMapSearch && !selectedRestaurant && !showAddModal && !isSettingLocation && (
         <RNAnimated.View
           style={{
             position: "absolute",

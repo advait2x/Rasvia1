@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -8,13 +8,14 @@ import {
   ActivityIndicator,
   Platform,
   ScrollView,
+  TextInput,
 } from "react-native";
 import { X, MapPin } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { supabase } from "@/lib/supabase";
 
 interface AdminRestaurantPanelProps {
-  restaurant: { id: string; name: string; waitTime: number; waitStatus: string };
+  restaurant: { id: string; name: string; waitTime: number; waitStatus: string; isEnabled: boolean };
   isWaitlistOpen: boolean;
   onClose: () => void;
   onUpdated: () => void;
@@ -28,38 +29,13 @@ export function AdminRestaurantPanel({
   onUpdated,
   onAdjustLocation,
 }: AdminRestaurantPanelProps) {
-  const [publishLoading, setPublishLoading] = useState(false);
-  const [featuredLoading, setFeaturedLoading] = useState(false);
+  const [enabledLoading, setEnabledLoading] = useState(false);
+  const [isEnabled, setIsEnabled] = useState(restaurant.isEnabled);
   const [waitTimeLoading, setWaitTimeLoading] = useState<string | null>(null);
   const [emergencyLoading, setEmergencyLoading] = useState(false);
-  const [isFeatured, setIsFeatured] = useState(false);
-  const [featuredAvailable, setFeaturedAvailable] = useState(true);
+  const [customWaitTime, setCustomWaitTime] = useState("");
 
   const restaurantId = Number(restaurant.id);
-
-  // Fetch is_featured on mount (column may not exist)
-  useEffect(() => {
-    async function fetchFeatured() {
-      try {
-        const { data, error } = await supabase
-          .from("restaurants")
-          .select("is_featured")
-          .eq("id", restaurantId)
-          .single();
-
-        if (error) {
-          if (error.message?.includes("is_featured") || error.code === "PGRST116") {
-            setFeaturedAvailable(false);
-          }
-          return;
-        }
-        setIsFeatured(data?.is_featured ?? false);
-      } catch {
-        setFeaturedAvailable(false);
-      }
-    }
-    fetchFeatured();
-  }, [restaurantId]);
 
   const haptic = () => {
     if (Platform.OS !== "web") {
@@ -67,56 +43,27 @@ export function AdminRestaurantPanel({
     }
   };
 
-  const handlePublishToggle = async () => {
+  const handleEnabledToggle = async () => {
     haptic();
-    setPublishLoading(true);
+    setEnabledLoading(true);
     try {
       const { error } = await supabase
         .from("restaurants")
-        .update({ is_waitlist_open: !isWaitlistOpen })
+        .update({ is_enabled: !isEnabled })
         .eq("id", restaurantId);
 
       if (error) throw error;
-      onUpdated();
+      setIsEnabled(!isEnabled);
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to update publish status.");
+      Alert.alert("Error", err.message || "Failed to update visibility.");
     } finally {
-      setPublishLoading(false);
-    }
-  };
-
-  const handleFeaturedToggle = async () => {
-    if (!featuredAvailable) return;
-    haptic();
-    setFeaturedLoading(true);
-    try {
-      const { error } = await supabase
-        .from("restaurants")
-        .update({ is_featured: !isFeatured })
-        .eq("id", restaurantId);
-
-      if (error) throw error;
-      setIsFeatured(!isFeatured);
-      onUpdated();
-    } catch (err: any) {
-      const msg = err.message || "";
-      if (msg.includes("is_featured") || msg.includes("column")) {
-        setFeaturedAvailable(false);
-        Alert.alert(
-          "Featured Unavailable",
-          "The is_featured column may not exist yet. Add it to the restaurants table to enable this feature."
-        );
-      } else {
-        Alert.alert("Error", msg || "Failed to update featured status.");
-      }
-    } finally {
-      setFeaturedLoading(false);
+      setEnabledLoading(false);
     }
   };
 
   const handleWaitTimeOverride = async (minutes: number) => {
     haptic();
-    const key = minutes === 999 ? "closed" : `${minutes}`;
+    const key = minutes === 999 ? "closed" : minutes === -1 ? "unknown" : `${minutes}`;
     setWaitTimeLoading(key);
     try {
       const { error } = await supabase
@@ -125,6 +72,30 @@ export function AdminRestaurantPanel({
         .eq("id", restaurantId);
 
       if (error) throw error;
+      onUpdated();
+    } catch (err: any) {
+      Alert.alert("Error", (err as Error).message || "Failed to update wait time.");
+    } finally {
+      setWaitTimeLoading(null);
+    }
+  };
+
+  const handleCustomWaitTime = async () => {
+    const parsed = parseInt(customWaitTime.trim(), 10);
+    if (isNaN(parsed) || parsed < 0) {
+      Alert.alert("Invalid", "Please enter a valid number of minutes.");
+      return;
+    }
+    haptic();
+    setWaitTimeLoading("custom");
+    try {
+      const { error } = await supabase
+        .from("restaurants")
+        .update({ current_wait_time: parsed })
+        .eq("id", restaurantId);
+
+      if (error) throw error;
+      setCustomWaitTime("");
       onUpdated();
     } catch (err: any) {
       Alert.alert("Error", (err as Error).message || "Failed to update wait time.");
@@ -215,7 +186,7 @@ export function AdminRestaurantPanel({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Status: Published / Unpublished */}
+            {/* Show Restaurant toggle */}
             <View style={{ marginBottom: 20 }}>
               <Text
                 style={{
@@ -227,11 +198,11 @@ export function AdminRestaurantPanel({
                   marginBottom: 10,
                 }}
               >
-                Status
+                Visibility
               </Text>
               <Pressable
-                onPress={handlePublishToggle}
-                disabled={publishLoading}
+                onPress={handleEnabledToggle}
+                disabled={enabledLoading}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -241,7 +212,7 @@ export function AdminRestaurantPanel({
                   padding: 16,
                   borderWidth: 1,
                   borderColor: "#2a2a2a",
-                  opacity: publishLoading ? 0.7 : 1,
+                  opacity: enabledLoading ? 0.7 : 1,
                 }}
               >
                 <Text
@@ -251,9 +222,9 @@ export function AdminRestaurantPanel({
                     fontSize: 15,
                   }}
                 >
-                  {isWaitlistOpen ? "Published" : "Unpublished"}
+                  Show Restaurant
                 </Text>
-                {publishLoading ? (
+                {enabledLoading ? (
                   <ActivityIndicator size="small" color="#FF9933" />
                 ) : (
                   <View
@@ -261,7 +232,7 @@ export function AdminRestaurantPanel({
                       width: 48,
                       height: 28,
                       borderRadius: 14,
-                      backgroundColor: isWaitlistOpen ? "#22C55E" : "#333333",
+                      backgroundColor: isEnabled ? "#22C55E" : "#333333",
                       padding: 2,
                       justifyContent: "center",
                     }}
@@ -272,80 +243,13 @@ export function AdminRestaurantPanel({
                         height: 24,
                         borderRadius: 12,
                         backgroundColor: "#f5f5f5",
-                        alignSelf: isWaitlistOpen ? "flex-end" : "flex-start",
+                        alignSelf: isEnabled ? "flex-end" : "flex-start",
                       }}
                     />
                   </View>
                 )}
               </Pressable>
             </View>
-
-            {/* Featured */}
-            {featuredAvailable && (
-              <View style={{ marginBottom: 20 }}>
-                <Text
-                  style={{
-                    fontFamily: "Manrope_600SemiBold",
-                    color: "#999999",
-                    fontSize: 12,
-                    textTransform: "uppercase",
-                    letterSpacing: 1,
-                    marginBottom: 10,
-                  }}
-                >
-                  Featured
-                </Text>
-                <Pressable
-                  onPress={handleFeaturedToggle}
-                  disabled={featuredLoading}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    backgroundColor: "#0f0f0f",
-                    borderRadius: 12,
-                    padding: 16,
-                    borderWidth: 1,
-                    borderColor: "#2a2a2a",
-                    opacity: featuredLoading ? 0.7 : 1,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_500Medium",
-                      color: "#f5f5f5",
-                      fontSize: 15,
-                    }}
-                  >
-                    {isFeatured ? "Featured" : "Not Featured"}
-                  </Text>
-                  {featuredLoading ? (
-                    <ActivityIndicator size="small" color="#FF9933" />
-                  ) : (
-                    <View
-                      style={{
-                        width: 48,
-                        height: 28,
-                        borderRadius: 14,
-                        backgroundColor: isFeatured ? "#FF9933" : "#333333",
-                        padding: 2,
-                        justifyContent: "center",
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: 12,
-                          backgroundColor: "#f5f5f5",
-                          alignSelf: isFeatured ? "flex-end" : "flex-start",
-                        }}
-                      />
-                    </View>
-                  )}
-                </Pressable>
-              </View>
-            )}
 
             {/* Location */}
             <View style={{ marginBottom: 20 }}>
@@ -385,7 +289,7 @@ export function AdminRestaurantPanel({
                     marginLeft: 10,
                   }}
                 >
-                  Adjust Location
+                  Change Location
                 </Text>
               </Pressable>
             </View>
@@ -446,6 +350,39 @@ export function AdminRestaurantPanel({
                     </Pressable>
                   );
                 })}
+
+                {/* Unknown button — clears wait time (grey status) */}
+                <Pressable
+                  onPress={() => handleWaitTimeOverride(-1)}
+                  disabled={!!waitTimeLoading}
+                  style={{
+                    backgroundColor: "#0f0f0f",
+                    borderRadius: 20,
+                    paddingHorizontal: 18,
+                    paddingVertical: 12,
+                    borderWidth: 1,
+                    borderColor: "#2a2a2a",
+                    minWidth: 80,
+                    alignItems: "center",
+                    opacity: waitTimeLoading === "unknown" ? 0.7 : 1,
+                  }}
+                >
+                  {waitTimeLoading === "unknown" ? (
+                    <ActivityIndicator size="small" color="#999999" />
+                  ) : (
+                    <Text
+                      style={{
+                        fontFamily: "Manrope_600SemiBold",
+                        color: "#999999",
+                        fontSize: 13,
+                      }}
+                    >
+                      Unknown
+                    </Text>
+                  )}
+                </Pressable>
+
+                {/* Closed button */}
                 <Pressable
                   onPress={() => handleWaitTimeOverride(999)}
                   disabled={!!waitTimeLoading}
@@ -472,6 +409,62 @@ export function AdminRestaurantPanel({
                       }}
                     >
                       Closed
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+
+              {/* Custom wait time input */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginTop: 12,
+                  gap: 10,
+                }}
+              >
+                <TextInput
+                  value={customWaitTime}
+                  onChangeText={setCustomWaitTime}
+                  keyboardType="number-pad"
+                  placeholder="Custom minutes…"
+                  placeholderTextColor="#555"
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#0f0f0f",
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: "#2a2a2a",
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    color: "#f5f5f5",
+                    fontFamily: "JetBrainsMono_600SemiBold",
+                    fontSize: 14,
+                  }}
+                />
+                <Pressable
+                  onPress={handleCustomWaitTime}
+                  disabled={!!waitTimeLoading || customWaitTime.trim() === ""}
+                  style={{
+                    backgroundColor: "#FF9933",
+                    borderRadius: 12,
+                    paddingHorizontal: 18,
+                    paddingVertical: 12,
+                    alignItems: "center",
+                    opacity: (!!waitTimeLoading || customWaitTime.trim() === "") ? 0.4 : 1,
+                  }}
+                >
+                  {waitTimeLoading === "custom" ? (
+                    <ActivityIndicator size="small" color="#0f0f0f" />
+                  ) : (
+                    <Text
+                      style={{
+                        fontFamily: "Manrope_700Bold",
+                        color: "#0f0f0f",
+                        fontSize: 14,
+                      }}
+                    >
+                      Set
                     </Text>
                   )}
                 </Pressable>

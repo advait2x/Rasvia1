@@ -34,12 +34,14 @@ import {
   haversineDistance,
 } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
+import { useAdminMode } from "@/hooks/useAdminMode";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function DiscoveryFeed() {
   const router = useRouter();
-  const { userCoords } = useLocation();
+  const { userCoords, locationLabel } = useLocation();
+  const { isAdmin } = useAdminMode();
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [showSearch, setShowSearch] = useState(false);
 
@@ -122,6 +124,7 @@ export default function DiscoveryFeed() {
   }, [userCoords]);
 
   const filteredRestaurants = restaurants.filter((r) => {
+    if (!isAdmin && !r.isEnabled) return false;
     if (activeFilter === "all") return true;
     return r.waitStatus === activeFilter;
   });
@@ -165,18 +168,20 @@ export default function DiscoveryFeed() {
           entering={FadeIn.duration(500)}
           className="flex-row items-center justify-between px-5 pt-2 pb-4"
         >
-          <View>
+          <View style={{ flex: 1, marginRight: 12 }}>
             <View className="flex-row items-center mb-1">
-              <MapPin size={13} color="#FF9933" />
+              <MapPin size={13} color="#FF9933" style={{ flexShrink: 0 }} />
               <Text
+                numberOfLines={1}
                 style={{
                   fontFamily: "Manrope_500Medium",
                   color: "#999999",
                   fontSize: 12,
                   marginLeft: 4,
+                  flexShrink: 1,
                 }}
               >
-                Downtown
+                {locationLabel ?? "Locating…"}
               </Text>
             </View>
             <Text
@@ -190,7 +195,7 @@ export default function DiscoveryFeed() {
               rasvia
             </Text>
           </View>
-          <View className="flex-row items-center">
+          <View className="flex-row items-center" style={{ flexShrink: 0 }}>
             <Pressable
               className="mr-3"
               onPress={() => {

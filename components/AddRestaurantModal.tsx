@@ -56,6 +56,7 @@ export function AddRestaurantModal({
           long: coords.lng,
           current_wait_time: waitTime.trim() !== "" ? parseInt(waitTime) : -1,
           is_waitlist_open: true,
+          is_enabled: true,
           rating: 0,
           price_range: "$$",
         },

@@ -20,6 +20,7 @@ import {
   Heart,
   Share2,
   ShoppingBag,
+  Settings,
 } from "lucide-react-native";
 import Animated, {
   useAnimatedStyle,
@@ -35,6 +36,8 @@ import { MenuGridItem } from "@/components/MenuGridItem";
 import { MenuEditor } from "@/components/MenuEditor";
 import { FoodDetailModal } from "@/components/FoodDetailModal";
 import { GroupCartDrawer } from "@/components/GroupCartDrawer";
+import { RestaurantEditModal } from "@/components/RestaurantEditModal";
+import { useAdminMode } from "@/hooks/useAdminMode";
 import { supabase } from "@/lib/supabase";
 import {
   type SupabaseRestaurant,
@@ -60,6 +63,7 @@ export default function RestaurantDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { userCoords } = useLocation();
+  const { isAdmin } = useAdminMode();
 
   // ==================================================
   // STATE MANAGEMENT - Supabase Data
@@ -72,6 +76,7 @@ export default function RestaurantDetail() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
 
   // ==================================================
@@ -463,6 +468,27 @@ export default function RestaurantDetail() {
                   <ArrowLeft size={22} color="#f5f5f5" />
                 </Pressable>
                 <View className="flex-row">
+                  {isAdmin && (
+                    <Pressable
+                      className="mr-2"
+                      onPress={() => {
+                        if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setShowEditModal(true);
+                      }}
+                      style={{
+                        backgroundColor: "rgba(15, 15, 15, 0.6)",
+                        width: 44,
+                        height: 44,
+                        borderRadius: 22,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderWidth: 1,
+                        borderColor: "rgba(255,153,51,0.4)",
+                      }}
+                    >
+                      <Settings size={20} color="#FF9933" />
+                    </Pressable>
+                  )}
                   <Pressable
                     className="mr-2"
                     onPress={handleToggleFavorite}
@@ -833,6 +859,34 @@ export default function RestaurantDetail() {
           onShare={() =>
             Alert.alert("Share Cart", "Group link copied to clipboard!")
           }
+        />
+      )}
+
+      {showEditModal && restaurant && (
+        <RestaurantEditModal
+          restaurantId={restaurant.id}
+          initial={{
+            name: restaurant.name,
+            address: restaurant.address,
+            description: restaurant.description,
+            cuisine: restaurant.tags.join(", "),
+          }}
+          onClose={() => setShowEditModal(false)}
+          onSaved={(updated) => {
+            setRestaurant((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    name: updated.name,
+                    address: updated.address,
+                    description: updated.description,
+                    cuisine: updated.cuisine,
+                    tags: updated.cuisine.split(",").map((t) => t.trim()).filter(Boolean),
+                  }
+                : prev
+            );
+            setShowEditModal(false);
+          }}
         />
       )}
     </View>
