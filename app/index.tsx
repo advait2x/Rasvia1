@@ -9,7 +9,7 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, Link } from "expo-router";
 import { Search, Bell, MapPin, TrendingUp, Zap, User, Map } from "lucide-react-native";
 import Animated, {
   FadeIn,
@@ -318,6 +318,13 @@ export default function DiscoveryFeed() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 100 }}
         >
+          {/* Temporary Host Party Button */}
+          <Link href="/host_party" asChild>
+            <Pressable className="bg-primary mx-5 p-4 rounded-xl items-center mb-6">
+              <Text className="text-rasvia-black font-bold text-lg">Test: Host Party</Text>
+            </Pressable>
+          </Link>
+
           {/* Trending Section */}
           <Animated.View entering={FadeInDown.delay(100).duration(500)}>
             <View className="px-5 mb-4">

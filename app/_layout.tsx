@@ -167,6 +167,10 @@ function AuthGate() {
         name="admin-pulse"
         options={{ headerShown: false, animation: "slide_from_bottom" }}
       />
+      <Stack.Screen
+        name="join/[id]"
+        options={{ title: 'Group Order', presentation: 'modal' }}
+      />
     </Stack>
   );
 }

@@ -8,6 +8,8 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  Share,
+  TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
@@ -161,19 +163,19 @@ export default function WaitlistStatus() {
     // Real-time: watch OUR entry for notified_at or seated status
     const notifySub = entry_id
       ? supabase
-          .channel(`my-entry:${entry_id}`)
-          .on(
-            "postgres_changes",
-            { event: "UPDATE", schema: "public", table: "waitlist_entries", filter: `id=eq.${entry_id}` },
-            (payload) => {
-              if (payload.new?.status === "seated" && payload.old?.status !== "seated") {
-                triggerSeated();
-              } else if (payload.new?.notified_at && !payload.old?.notified_at) {
-                triggerTableReady();
-              }
+        .channel(`my-entry:${entry_id}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "waitlist_entries", filter: `id=eq.${entry_id}` },
+          (payload) => {
+            if (payload.new?.status === "seated" && payload.old?.status !== "seated") {
+              triggerSeated();
+            } else if (payload.new?.notified_at && !payload.old?.notified_at) {
+              triggerTableReady();
             }
-          )
-          .subscribe()
+          }
+        )
+        .subscribe()
       : null;
 
     return () => {
@@ -330,15 +332,63 @@ export default function WaitlistStatus() {
     ]);
   }, []);
 
-  const handleShareWaitlist = useCallback(() => {
+  const [creatingParty, setCreatingParty] = useState(false);
+
+  const handleStartGroupOrder = async () => {
     if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    Alert.alert("Share Waitlist", "Invite friends to join your group!", [
-      { text: "Copy Link" },
-      { text: "Cancel", style: "cancel" },
-    ]);
-  }, []);
+
+    setCreatingParty(true);
+    try {
+      if (!id) throw new Error("Missing restaurant details");
+      const userId = session?.user?.id;
+      if (!userId) throw new Error("You must be logged in to hold a party");
+
+      // Check if we already created a session for this waitlist
+      let sessionId;
+      const { data: existing } = await supabase
+        .from('party_sessions')
+        .select('id')
+        .eq('host_user_id', userId)
+        .eq('restaurant_id', Number(id))
+        .eq('status', 'open')
+        .single();
+
+      if (existing) {
+        sessionId = existing.id;
+      } else {
+        // Create a new session in Supabase
+        const { data: newSession, error } = await supabase
+          .from('party_sessions')
+          .insert({
+            restaurant_id: Number(id),
+            host_user_id: userId,
+            status: 'open'
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        sessionId = newSession.id;
+      }
+
+      // Generate Link pointing to the Web Bridge
+      const shareUrl = `http://172.20.10.5:5173/join?id=${sessionId}`;
+
+      // Open Native Share Sheet
+      await Share.share({
+        title: 'Join my Group Order',
+        message: `I'm holding the table at ${restaurant?.name}! Add your food to the cart here: ${shareUrl}`,
+        url: shareUrl,
+      });
+
+    } catch (err: any) {
+      Alert.alert("Error", "Could not start party: " + err.message);
+    } finally {
+      setCreatingParty(false);
+    }
+  };
 
   const menuBtnScale = useSharedValue(1);
   const menuBtnStyle = useAnimatedStyle(() => ({
@@ -566,9 +616,10 @@ export default function WaitlistStatus() {
               </View>
             </View>
 
-            {/* Share Button */}
-            <Pressable
-              onPress={handleShareWaitlist}
+            {/* Share & Start Group Order Button */}
+            <TouchableOpacity
+              onPress={handleStartGroupOrder}
+              disabled={creatingParty}
               className="flex-row items-center justify-center mt-3 py-3 rounded-2xl"
               style={{
                 backgroundColor: "#1a1a1a",
@@ -576,18 +627,24 @@ export default function WaitlistStatus() {
                 borderColor: "#2a2a2a",
               }}
             >
-              <Share2 size={16} color="#FF9933" />
-              <Text
-                style={{
-                  fontFamily: "Manrope_700Bold",
-                  color: "#FF9933",
-                  fontSize: 14,
-                  marginLeft: 8,
-                }}
-              >
-                Share & Start Group Order
-              </Text>
-            </Pressable>
+              {creatingParty ? (
+                <ActivityIndicator color="#FF9933" />
+              ) : (
+                <>
+                  <Share2 size={16} color="#FF9933" />
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_700Bold",
+                      color: "#FF9933",
+                      fontSize: 14,
+                      marginLeft: 8,
+                    }}
+                  >
+                    Share & Start Group Order
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
           </Animated.View>
 
           {/* Pre-order count */}
@@ -702,7 +759,7 @@ export default function WaitlistStatus() {
       </SafeAreaView>
 
       {/* Seated / Enjoy Your Meal screen */}
-      <Modal visible={showSeated} transparent animationType="fade" onRequestClose={() => {}}>
+      <Modal visible={showSeated} transparent animationType="fade" onRequestClose={() => { }}>
         <View
           style={{
             flex: 1,
@@ -767,7 +824,7 @@ export default function WaitlistStatus() {
       </Modal>
 
       {/* Table Ready Notification */}
-      <Modal visible={showTableReady} transparent animationType="fade" onRequestClose={() => {}}>
+      <Modal visible={showTableReady} transparent animationType="fade" onRequestClose={() => { }}>
         <View
           style={{
             flex: 1,
