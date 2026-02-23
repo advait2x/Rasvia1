@@ -374,7 +374,7 @@ export default function WaitlistStatus() {
       }
 
       // Generate Link pointing to the Web Bridge
-      const shareUrl = `http://172.20.10.5:5173/join?id=${sessionId}`;
+      const shareUrl = `http://192.168.1.96:5173/join?id=${sessionId}`;
 
       // Open Native Share Sheet
       await Share.share({

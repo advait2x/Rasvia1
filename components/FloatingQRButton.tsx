@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, View, Text } from "react-native";
-import { QrCode } from "lucide-react-native";
+import { Plus } from "lucide-react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -55,7 +55,7 @@ export function FloatingQRButton({ onPress, cartCount }: FloatingQRButtonProps) 
           elevation: 8,
         }}
       >
-        <QrCode size={26} color="#0f0f0f" strokeWidth={2.5} />
+        <Plus size={28} color="#0f0f0f" strokeWidth={2.5} />
       </Pressable>
 
       {cartCount !== undefined && cartCount > 0 && (

@@ -75,8 +75,8 @@ function GlobalTableReadyBanner() {
     return (
       <InAppNotification
         visible
-        message={`🍽️ Enjoy your meal at ${seatedAlert.restaurantName}!`}
-        type="info"
+        message={`Enjoy your meal at ${seatedAlert.restaurantName}!`}
+        type="seated"
         onDismiss={clearSeatedAlert}
         duration={8000}
       />
@@ -86,8 +86,8 @@ function GlobalTableReadyBanner() {
   return (
     <InAppNotification
       visible={!!tableReadyAlert}
-      message={tableReadyAlert ? `🔔 Your table is ready at ${tableReadyAlert.restaurantName}!` : ""}
-      type="success"
+      message={tableReadyAlert ? `Your table is ready at ${tableReadyAlert.restaurantName}` : ""}
+      type="table_ready"
       onDismiss={clearTableReadyAlert}
       duration={8000}
     />

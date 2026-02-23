@@ -447,7 +447,7 @@ export default function MapScreen() {
       clusterRestaurants.forEach((r) => {
         if (r.image) Image.prefetch(r.image).catch(() => { });
       });
-      setNearbyRestaurants(clusterRestaurants);
+      setNearbyRestaurants([...clusterRestaurants].sort((a, b) => a.name.localeCompare(b.name)));
       // setTimeout 100ms to ensure map marker press event clears before state update
       setSelectedRestaurant(null)
       setTimeout(() => setShowNearbyList(true), 100);
@@ -1759,6 +1759,8 @@ function MapSearchOverlay({
       list.sort((a, b) => a.waitTime - b.waitTime);
     } else if (sortBy === "distance") {
       list.sort((a, b) => parseDistance(a.distance || "0") - parseDistance(b.distance || "0"));
+    } else {
+      list.sort((a, b) => a.name.localeCompare(b.name));
     }
     
     return list;

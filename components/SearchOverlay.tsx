@@ -107,7 +107,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
         const { data, error } = await supabase
           .from('restaurants')
           .select('*')
-          .order('current_wait_time', { ascending: true });
+          .order('name', { ascending: true });
 
         if (error) throw error;
         if (data) {
@@ -166,6 +166,8 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
       list.sort((a, b) => a.waitTime - b.waitTime);
     } else if (sortBy === "distance") {
       list.sort((a, b) => parseDistance(a.distance) - parseDistance(b.distance));
+    } else {
+      list.sort((a, b) => a.name.localeCompare(b.name));
     }
 
     return list;

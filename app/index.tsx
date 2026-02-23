@@ -3,13 +3,14 @@ import {
   View,
   Text,
   ScrollView,
+  FlatList,
   Pressable,
   Dimensions,
   Alert,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, Link } from "expo-router";
+import { useRouter } from "expo-router";
 import { Search, Bell, MapPin, TrendingUp, Zap, User, Map } from "lucide-react-native";
 import Animated, {
   FadeIn,
@@ -131,10 +132,23 @@ export default function DiscoveryFeed() {
     return r.waitStatus === activeFilter;
   });
 
+  const parseDist = (d: string) => parseFloat(d) || 9999;
+
+  const nearbyRestaurants = [...filteredRestaurants].sort((a, b) => {
+    if (activeFilter !== "all") {
+      // when a time filter is active: sort by wait time first, then distance
+      const aw = a.waitTime ?? 9999;
+      const bw = b.waitTime ?? 9999;
+      if (aw !== bw) return aw - bw;
+      return parseDist(a.distance) - parseDist(b.distance);
+    }
+    // default: sort by distance
+    return parseDist(a.distance) - parseDist(b.distance);
+  });
+
   const trendingRestaurants = restaurants
-    .filter((r) => r.waitStatus !== "darkgrey" && r.waitStatus !== "grey")
+    .filter((r) => (isAdmin || r.isEnabled) && r.waitStatus !== "darkgrey" && r.waitStatus !== "grey")
     .slice(0, 3);
-  const nearbyRestaurants = filteredRestaurants;
 
   const handleRestaurantPress = useCallback(
     (id: string) => {
@@ -150,10 +164,8 @@ export default function DiscoveryFeed() {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    Alert.alert("QR Scanner", "Camera access needed for QR scanning", [
-      { text: "OK" },
-    ]);
-  }, []);
+    router.push("/host_party" as any);
+  }, [router]);
 
   const handleFilterChange = useCallback((filter: FilterType) => {
     if (Platform.OS !== "web") {
@@ -168,7 +180,8 @@ export default function DiscoveryFeed() {
         {/* Header */}
         <Animated.View
           entering={FadeIn.duration(500)}
-          className="flex-row items-center justify-between px-5 pt-2 pb-4"
+          className="flex-row items-center justify-between px-5"
+          style={{ paddingTop: 0, paddingBottom: 4, backgroundColor: "#0f0f0f", zIndex: 10 }}
         >
           <View style={{ flex: 1, marginRight: 12 }}>
             <View className="flex-row items-center mb-1">
@@ -318,16 +331,10 @@ export default function DiscoveryFeed() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 100 }}
         >
-          {/* Temporary Host Party Button */}
-          <Link href="/host_party" asChild>
-            <Pressable className="bg-primary mx-5 p-4 rounded-xl items-center mb-6">
-              <Text className="text-rasvia-black font-bold text-lg">Test: Host Party</Text>
-            </Pressable>
-          </Link>
-
           {/* Trending Section */}
+          <View style={{ height: 10 }} />
           <Animated.View entering={FadeInDown.delay(100).duration(500)}>
-            <View className="px-5 mb-4">
+            <View className="px-5 mb-1">
               <View className="flex-row items-center mb-1">
                 <TrendingUp size={18} color="#FF9933" />
                 <Text
@@ -353,25 +360,26 @@ export default function DiscoveryFeed() {
               </Text>
             </View>
           </Animated.View>
+          <View style={{ height: 5 }} />
 
           {/* Hero Carousel */}
-          <ScrollView
+          <FlatList
             horizontal
+            data={trendingRestaurants}
+            keyExtractor={(r) => r.id}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}
             decelerationRate="fast"
             snapToInterval={SCREEN_WIDTH - 48 + 16}
             snapToAlignment="start"
-          >
-            {trendingRestaurants.map((restaurant, index) => (
+            renderItem={({ item: restaurant, index }) => (
               <HeroCard
-                key={restaurant.id}
                 restaurant={restaurant}
                 index={index}
                 onPress={() => handleRestaurantPress(restaurant.id)}
               />
-            ))}
-          </ScrollView>
+            )}
+          />
 
           {/* Filter Section */}
           <View className="mt-8 mb-4">
@@ -403,20 +411,20 @@ export default function DiscoveryFeed() {
           </View>
 
           {/* Nearby Restaurants List */}
-          <ScrollView
+          <FlatList
             horizontal
+            data={nearbyRestaurants}
+            keyExtractor={(r) => r.id}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}
-          >
-            {nearbyRestaurants.map((restaurant, index) => (
+            renderItem={({ item: restaurant, index }) => (
               <RestaurantListCard
-                key={restaurant.id}
                 restaurant={restaurant}
                 index={index}
                 onPress={() => handleRestaurantPress(restaurant.id)}
               />
-            ))}
-          </ScrollView>
+            )}
+          />
 
           {/* Quick Bites Section */}
           <Animated.View entering={FadeInDown.delay(400).duration(500)}>
@@ -453,7 +461,7 @@ export default function DiscoveryFeed() {
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}
           >
             {restaurants
-              .filter((r) => r.waitStatus === "green")
+              .filter((r) => (isAdmin || r.isEnabled) && r.waitStatus === "green")
               .map((restaurant, index) => (
                 <RestaurantListCard
                   key={restaurant.id}

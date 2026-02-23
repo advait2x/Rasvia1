@@ -27,7 +27,10 @@ export type NotificationEventType =
   | "table_ready"
   | "seated"
   | "left"
-  | "removed";
+  | "removed"
+  | "group_created"
+  | "group_joined"
+  | "group_submitted";
 
 export interface NotificationEvent {
   id: string;

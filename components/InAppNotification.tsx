@@ -9,11 +9,11 @@ import Animated, {
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AlertCircle, CheckCircle, Info, X } from "lucide-react-native";
+import { AlertCircle, CheckCircle, Info, X, BellRing, Utensils } from "lucide-react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-type NotificationType = "error" | "success" | "info";
+type NotificationType = "error" | "success" | "info" | "table_ready" | "seated";
 
 interface InAppNotificationProps {
     visible: boolean;
@@ -87,16 +87,18 @@ export function InAppNotification({
 
     const getNotificationConfig = () => {
         switch (type) {
+            case "table_ready":
             case "success":
                 return {
-                    icon: CheckCircle,
+                    icon: BellRing,
                     color: "#FFFFFF",
                     bgColor: "#16A34A",
                     borderColor: "#15803D",
                 };
+            case "seated":
             case "info":
                 return {
-                    icon: Info,
+                    icon: Utensils,
                     color: "#FFFFFF",
                     bgColor: "#2563EB",
                     borderColor: "#1D4ED8",
@@ -159,10 +161,11 @@ export function InAppNotification({
                 <Text
                     style={{
                         flex: 1,
-                        fontFamily: "Manrope_600SemiBold",
-                        color: "#f5f5f5",
-                        fontSize: 16,
-                        lineHeight: 22,
+                        fontFamily: "BricolageGrotesque_700Bold",
+                        color: "#FFFFFF",
+                        fontSize: 15,
+                        lineHeight: 21,
+                        letterSpacing: -0.2,
                     }}
                 >
                     {message}

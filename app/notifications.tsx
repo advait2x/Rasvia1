@@ -24,6 +24,9 @@ import {
   Trash2,
   AlertCircle,
   X,
+  UtensilsCrossed,
+  ShoppingCart,
+  CheckCheck,
 } from "lucide-react-native";
 import Animated, {
   FadeIn,
@@ -138,6 +141,21 @@ const EVENT_CONFIG: Record<
     label: (r) => `Removed from ${r}'s waitlist`,
     color: "#EF4444",
     icon: AlertCircle,
+  },
+  group_created: {
+    label: (r) => `You started a group order at ${r}`,
+    color: "#FF9933",
+    icon: UtensilsCrossed,
+  },
+  group_joined: {
+    label: (r) => `You joined a group order at ${r}`,
+    color: "#FF9933",
+    icon: Users,
+  },
+  group_submitted: {
+    label: (r) => `Group order submitted at ${r}`,
+    color: "#22C55E",
+    icon: CheckCheck,
   },
 };
 
@@ -797,6 +815,7 @@ export default function NotificationsScreen() {
 
         <ScrollView
           showsVerticalScrollIndicator={false}
+          scrollEnabled={!isEmpty}
           contentContainerStyle={isEmpty ? { flex: 1 } : { paddingBottom: 40 }}
           refreshControl={
             <RefreshControl
