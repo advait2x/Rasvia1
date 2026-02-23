@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, Image, Dimensions, Platform } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { X, Plus, Leaf, Flame, Play } from "lucide-react-native";
+import { X, Plus, Leaf, Flame } from "lucide-react-native";
 import type { MenuItem } from "@/data/mockData";
 import Animated, { FadeIn, SlideInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
@@ -53,23 +53,6 @@ export function FoodDetailModal({
                 bottom: 0,
               }}
             />
-
-            {/* Video Play Indicator */}
-            <View
-              className="absolute items-center justify-center"
-              style={{
-                top: "40%",
-                left: "50%",
-                marginLeft: -30,
-                marginTop: -30,
-                width: 60,
-                height: 60,
-                borderRadius: 30,
-                backgroundColor: "rgba(255, 153, 51, 0.8)",
-              }}
-            >
-              <Play size={24} color="#0f0f0f" fill="#0f0f0f" />
-            </View>
 
             {/* Close button */}
             <Pressable

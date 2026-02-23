@@ -21,6 +21,7 @@ import { WaitBadge } from "@/components/WaitBadge";
 import { supabase } from "@/lib/supabase";
 import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant, haversineDistance } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
+import { useAdminMode } from "@/hooks/useAdminMode";
 
 // --- Trie-based prefix search for efficient matching ---
 
@@ -88,6 +89,7 @@ interface SearchOverlayProps {
 export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const router = useRouter();
   const { userCoords } = useLocation();
+  const { isAdmin } = useAdminMode();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("none");
@@ -109,7 +111,9 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
 
         if (error) throw error;
         if (data) {
-          const uiRestaurants = data.map((r: SupabaseRestaurant) => mapSupabaseToUI(r, userCoords));
+          const uiRestaurants = data
+            .map((r: SupabaseRestaurant) => mapSupabaseToUI(r, userCoords))
+            .filter((r) => isAdmin || r.isEnabled);
           setRestaurants(uiRestaurants);
           setRestaurantTrie(buildTrie(uiRestaurants));
           setRestaurantMap(new Map(uiRestaurants.map((r) => [r.id, r])));

@@ -26,6 +26,7 @@ export type NotificationEventType =
   | "joined"
   | "table_ready"
   | "seated"
+  | "left"
   | "removed";
 
 export interface NotificationEvent {
@@ -52,13 +53,30 @@ export interface ActiveWaitlistEntry {
   status: "waiting" | "notified" | "seated";
   joinedAt: string;
   notifiedAt: string | null;
+  seatedAt: string | null;
+}
+
+export interface TableReadyAlert {
+  restaurantName: string;
+  entryId: string;
+}
+
+export interface SeatedAlert {
+  restaurantName: string;
+  entryId: string;
 }
 
 interface NotificationsContextValue {
   events: NotificationEvent[];
   activeEntries: ActiveWaitlistEntry[];
   unreadCount: number;
+  tableReadyAlert: TableReadyAlert | null;
+  clearTableReadyAlert: () => void;
+  seatedAlert: SeatedAlert | null;
+  clearSeatedAlert: () => void;
   addEvent: (event: Omit<NotificationEvent, "id" | "read">) => Promise<void>;
+  removeEvent: (id: string) => Promise<void>;
+  dismissEntry: (entryId: string) => void;
   markAllRead: () => Promise<void>;
   clearAll: () => Promise<void>;
   refreshActive: () => Promise<void>;
@@ -68,13 +86,20 @@ const NotificationsContext = createContext<NotificationsContextValue>({
   events: [],
   activeEntries: [],
   unreadCount: 0,
+  tableReadyAlert: null,
+  clearTableReadyAlert: () => {},
+  seatedAlert: null,
+  clearSeatedAlert: () => {},
   addEvent: async () => {},
+  removeEvent: async () => {},
+  dismissEntry: () => {},
   markAllRead: async () => {},
   clearAll: async () => {},
   refreshActive: async () => {},
 });
 
 const STORAGE_KEY = "rasvia:notifications:v2";
+const DISMISSED_KEY = "rasvia:dismissed-entries:v1";
 
 // ==========================================
 // HELPERS
@@ -96,9 +121,26 @@ async function loadStoredEvents(): Promise<NotificationEvent[]> {
 
 async function saveEvents(events: NotificationEvent[]): Promise<void> {
   try {
-    // Keep only the last 100 events
     const trimmed = events.slice(0, 100);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    // silently ignore
+  }
+}
+
+async function loadDismissedIds(): Promise<Set<string>> {
+  try {
+    const raw = await AsyncStorage.getItem(DISMISSED_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+async function saveDismissedIds(ids: Set<string>): Promise<void> {
+  try {
+    await AsyncStorage.setItem(DISMISSED_KEY, JSON.stringify([...ids]));
   } catch {
     // silently ignore
   }
@@ -112,16 +154,20 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const { session } = useAuth();
   const [events, setEvents] = useState<NotificationEvent[]>([]);
   const [activeEntries, setActiveEntries] = useState<ActiveWaitlistEntry[]>([]);
+  const [tableReadyAlert, setTableReadyAlert] = useState<TableReadyAlert | null>(null);
+  const [seatedAlert, setSeatedAlert] = useState<SeatedAlert | null>(null);
 
   // Track entry IDs we're already watching to avoid duplicate subscriptions
   const watchedEntryIds = useRef<Set<string>>(new Set());
   const channelsRef = useRef<any[]>([]);
+  const dismissedIdsRef = useRef<Set<string>>(new Set());
 
   // ==========================================
-  // Load persisted events on mount
+  // Load persisted events + dismissed IDs on mount
   // ==========================================
   useEffect(() => {
     loadStoredEvents().then(setEvents);
+    loadDismissedIds().then((ids) => { dismissedIdsRef.current = ids; });
   }, []);
 
   // ==========================================
@@ -151,8 +197,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
             current_wait_time
           )
         `)
-        .eq("profile_id", session.user.id)
-        .in("status", ["waiting", "notified"])
+        .eq("user_id", session.user.id)
+        .in("status", ["waiting", "notified", "seated"])
         .order("created_at", { ascending: false });
 
       if (error || !data) return;
@@ -205,11 +251,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
             status: row.status,
             joinedAt: row.created_at,
             notifiedAt: row.notified_at ?? null,
+            seatedAt: row.status === "seated" ? (row.notified_at ?? row.created_at) : null,
           };
         })
       );
 
-      setActiveEntries(entries);
+      // Filter out manually dismissed entries
+      const visible = entries.filter((e) => !dismissedIdsRef.current.has(e.entryId));
+      setActiveEntries(visible);
 
       // Subscribe to any new entry IDs we haven't watched yet
       entries.forEach((entry) => {
@@ -252,6 +301,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
                 partySize,
                 timestamp: new Date().toISOString(),
               });
+              // Fire global in-app banner
+              setTableReadyAlert({ restaurantName, entryId });
               // Update active entry status
               setActiveEntries((prev) =>
                 prev.map((e) =>
@@ -271,14 +322,23 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
                 partySize,
                 timestamp: new Date().toISOString(),
               });
-              // Remove from active entries
-              setActiveEntries((prev) => prev.filter((e) => e.entryId !== entryId));
+              // Fire global in-app blue banner
+              setSeatedAlert({ restaurantName, entryId });
+              // Keep entry visible with seated status — user must dismiss it manually
+              setActiveEntries((prev) =>
+                prev.map((e) =>
+                  e.entryId === entryId
+                    ? { ...e, status: "seated", seatedAt: new Date().toISOString() }
+                    : e
+                )
+              );
             }
 
             if (
-              (newRow.status === "cancelled" || newRow.status === "removed") &&
-              oldRow.status === "waiting"
+              newRow.status === "removed" &&
+              oldRow.status !== "removed"
             ) {
+              // Admin-removed: show notification and remove widget
               addEvent({
                 type: "removed",
                 restaurantName,
@@ -287,6 +347,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
                 partySize,
                 timestamp: new Date().toISOString(),
               });
+              setActiveEntries((prev) => prev.filter((e) => e.entryId !== entryId));
+            }
+
+            if (
+              newRow.status === "cancelled" &&
+              oldRow.status !== "cancelled"
+            ) {
+              // User-cancelled (left themselves) — widget handled via dismissEntry
               setActiveEntries((prev) => prev.filter((e) => e.entryId !== entryId));
             }
           }
@@ -344,6 +412,28 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     []
   );
 
+  const clearTableReadyAlert = useCallback(() => {
+    setTableReadyAlert(null);
+  }, []);
+
+  const clearSeatedAlert = useCallback(() => {
+    setSeatedAlert(null);
+  }, []);
+
+  const removeEvent = useCallback(async (id: string) => {
+    setEvents((prev) => {
+      const updated = prev.filter((e) => e.id !== id);
+      saveEvents(updated);
+      return updated;
+    });
+  }, []);
+
+  const dismissEntry = useCallback((entryId: string) => {
+    dismissedIdsRef.current.add(entryId);
+    saveDismissedIds(dismissedIdsRef.current);
+    setActiveEntries((prev) => prev.filter((e) => e.entryId !== entryId));
+  }, []);
+
   const markAllRead = useCallback(async () => {
     setEvents((prev) => {
       const updated = prev.map((e) => ({ ...e, read: true }));
@@ -353,6 +443,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const clearAll = useCallback(async () => {
+    // Add all currently visible active entries to dismissed so they don't come back
+    setActiveEntries((prev) => {
+      prev.forEach((e) => dismissedIdsRef.current.add(e.entryId));
+      saveDismissedIds(dismissedIdsRef.current);
+      return [];
+    });
     setEvents([]);
     await AsyncStorage.removeItem(STORAGE_KEY);
   }, []);
@@ -365,7 +461,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         events,
         activeEntries,
         unreadCount,
+        tableReadyAlert,
+        clearTableReadyAlert,
+        seatedAlert,
+        clearSeatedAlert,
         addEvent,
+        removeEvent,
+        dismissEntry,
         markAllRead,
         clearAll,
         refreshActive,

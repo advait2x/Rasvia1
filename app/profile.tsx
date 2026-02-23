@@ -320,9 +320,16 @@ export default function ProfileSettingsScreen() {
     }
   }, [session, tempFirstName, tempLastInitial]);
 
+  function formatPhoneNumber(raw: string): string {
+    const digits = raw.replace(/\D/g, "").slice(0, 10);
+    if (digits.length <= 3) return digits.length ? `(${digits}` : "";
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+
   const handleSavePhone = useCallback(async () => {
     if (!session?.user?.id) return;
-    const cleaned = tempPhone.trim();
+    const cleaned = tempPhone.replace(/\D/g, "").trim();
     if (!cleaned) {
       Alert.alert("Error", "Phone number cannot be empty.");
       return;
@@ -335,8 +342,8 @@ export default function ProfileSettingsScreen() {
 
       if (error) throw error;
 
-      setPhoneNumber(cleaned);
-      setEditingPhone(false);
+              setPhoneNumber(formatPhoneNumber(cleaned));
+              setEditingPhone(false);
 
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1406,7 +1413,7 @@ export default function ProfileSettingsScreen() {
                 <Phone size={16} color="#999999" />
                 <TextInput
                   value={tempPhone}
-                  onChangeText={setTempPhone}
+                  onChangeText={(v) => setTempPhone(formatPhoneNumber(v))}
                   style={{
                     flex: 1,
                     color: "#f5f5f5",

@@ -6,7 +6,8 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, Platform } from "react-native";
+import * as Haptics from "expo-haptics";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
@@ -28,7 +29,8 @@ import {
 } from "@expo-google-fonts/jetbrains-mono";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { LocationProvider } from "@/lib/location-context";
-import { NotificationsProvider } from "@/lib/notifications-context";
+import { NotificationsProvider, useNotifications } from "@/lib/notifications-context";
+import { InAppNotification } from "@/components/InAppNotification";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -43,6 +45,54 @@ const rasviaTheme = {
     primary: "#FF9933",
   },
 };
+
+// ==========================================
+// GLOBAL TABLE-READY BANNER
+// ==========================================
+function GlobalTableReadyBanner() {
+  const { tableReadyAlert, clearTableReadyAlert, seatedAlert, clearSeatedAlert } = useNotifications();
+
+  useEffect(() => {
+    if (tableReadyAlert && Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 150);
+      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 350);
+      setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 600);
+      setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 750);
+      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 950);
+    }
+  }, [tableReadyAlert]);
+
+  useEffect(() => {
+    if (seatedAlert && Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 400);
+    }
+  }, [seatedAlert]);
+
+  // Show seated (blue) banner on top if present, otherwise table ready (green)
+  if (seatedAlert) {
+    return (
+      <InAppNotification
+        visible
+        message={`🍽️ Enjoy your meal at ${seatedAlert.restaurantName}!`}
+        type="info"
+        onDismiss={clearSeatedAlert}
+        duration={8000}
+      />
+    );
+  }
+
+  return (
+    <InAppNotification
+      visible={!!tableReadyAlert}
+      message={tableReadyAlert ? `🔔 Your table is ready at ${tableReadyAlert.restaurantName}!` : ""}
+      type="success"
+      onDismiss={clearTableReadyAlert}
+      duration={8000}
+    />
+  );
+}
 
 // ==========================================
 // AUTH GATE: Redirects based on session
@@ -162,6 +212,7 @@ export default function RootLayout() {
             <LocationProvider>
               <NotificationsProvider>
                 <AuthGate />
+                <GlobalTableReadyBanner />
               </NotificationsProvider>
             </LocationProvider>
           </AuthProvider>

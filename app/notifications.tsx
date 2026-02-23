@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from "react";
+import React, { useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Platform,
   Image,
   RefreshControl,
+  Animated as RNAnimated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, Stack } from "expo-router";
@@ -22,13 +23,15 @@ import {
   ChevronRight,
   Trash2,
   AlertCircle,
-  Hash,
+  X,
 } from "lucide-react-native";
 import Animated, {
   FadeIn,
   FadeInDown,
+  FadeOut,
   LinearTransition,
 } from "react-native-reanimated";
+import { Swipeable } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
 import {
   useNotifications,
@@ -54,8 +57,17 @@ function timeAgo(isoString: string): string {
     const hrs = Math.floor(diffMs / 3_600_000);
     return `${hrs}h ago`;
   }
-  const days = Math.floor(diffMs / 86_400_000);
-  return days === 1 ? "Yesterday" : `${days}d ago`;
+
+  // Check if yesterday (same calendar day as yesterday)
+  const thenDate = new Date(then);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  if (thenDate >= yesterdayStart && thenDate < todayStart) return "Yesterday";
+
+  // Older — show 3-letter day name
+  return thenDate.toLocaleDateString("en-US", { weekday: "short" });
 }
 
 function formatJoinTime(isoString: string): string {
@@ -86,6 +98,12 @@ const STATUS_CONFIG: Record<
     bg: "rgba(34,197,94,0.12)",
     pulse: true,
   },
+  seated: {
+    label: "Enjoy Your Meal!",
+    color: "#3B82F6",
+    bg: "rgba(59,130,246,0.12)",
+    pulse: false,
+  },
 };
 
 const EVENT_CONFIG: Record<
@@ -111,6 +129,11 @@ const EVENT_CONFIG: Record<
     color: "#FF9933",
     icon: Utensils,
   },
+  left: {
+    label: (r) => `You left ${r}'s waitlist`,
+    color: "#EF4444",
+    icon: AlertCircle,
+  },
   removed: {
     label: (r) => `Removed from ${r}'s waitlist`,
     color: "#EF4444",
@@ -125,9 +148,11 @@ const EVENT_CONFIG: Record<
 function WaitlistWidget({
   entry,
   onPress,
+  onDismiss,
 }: {
   entry: ActiveWaitlistEntry;
   onPress: () => void;
+  onDismiss: () => void;
 }) {
   const statusCfg = STATUS_CONFIG[entry.status] ?? STATUS_CONFIG.waiting;
 
@@ -166,6 +191,8 @@ function WaitlistWidget({
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             {entry.status === "notified" ? (
               <BellRing size={14} color={statusCfg.color} />
+            ) : entry.status === "seated" ? (
+              <Utensils size={14} color={statusCfg.color} />
             ) : (
               <Clock size={14} color={statusCfg.color} />
             )}
@@ -181,15 +208,34 @@ function WaitlistWidget({
               {statusCfg.label}
             </Text>
           </View>
-          <Text
-            style={{
-              fontFamily: "Manrope_500Medium",
-              color: "#666666",
-              fontSize: 11,
-            }}
-          >
-            Joined {formatJoinTime(entry.joinedAt)}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Text
+              style={{
+                fontFamily: "Manrope_500Medium",
+                color: "#666666",
+                fontSize: 11,
+              }}
+            >
+              Joined {formatJoinTime(entry.joinedAt)}
+            </Text>
+            {/* Dismiss button — always visible for seated, tap to close */}
+            {entry.status === "seated" && (
+              <Pressable
+                onPress={(e) => { e.stopPropagation?.(); onDismiss(); }}
+                hitSlop={8}
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  backgroundColor: "rgba(255,255,255,0.08)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <X size={12} color="#999" />
+              </Pressable>
+            )}
+          </View>
         </View>
 
         {/* Main content */}
@@ -428,6 +474,36 @@ function WaitlistWidget({
               </View>
             </View>
           )}
+
+          {/* Seated banner */}
+          {entry.status === "seated" && (
+            <View
+              style={{
+                marginTop: 14,
+                backgroundColor: "rgba(59,130,246,0.1)",
+                borderRadius: 12,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: "rgba(59,130,246,0.25)",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <Utensils size={20} color="#3B82F6" />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontFamily: "BricolageGrotesque_700Bold",
+                    color: "#3B82F6",
+                    fontSize: 14,
+                  }}
+                >
+                  Enjoy your meal!
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
       </Pressable>
     </Animated.View>
@@ -438,102 +514,163 @@ function WaitlistWidget({
 // NOTIFICATION EVENT ROW
 // ==========================================
 
-function NotificationRow({ event }: { event: NotificationEvent }) {
+function NotificationRow({
+  event,
+  onDismiss,
+  isLast,
+}: {
+  event: NotificationEvent;
+  onDismiss: () => void;
+  isLast: boolean;
+}) {
   const cfg = EVENT_CONFIG[event.type];
   if (!cfg) return null;
   const Icon = cfg.icon;
+  const swipeableRef = useRef<Swipeable>(null);
+
+  const renderRightActions = (
+    _progress: RNAnimated.AnimatedInterpolation<number>,
+    dragX: RNAnimated.AnimatedInterpolation<number>
+  ) => {
+    const scale = dragX.interpolate({
+      inputRange: [-80, 0],
+      outputRange: [1, 0.6],
+      extrapolate: "clamp",
+    });
+    return (
+      <RNAnimated.View
+        style={{
+          width: 72,
+          alignItems: "center",
+          justifyContent: "center",
+          transform: [{ scale }],
+        }}
+      >
+        <Pressable
+          onPress={() => {
+            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            swipeableRef.current?.close();
+            onDismiss();
+          }}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: "#EF444420",
+            borderWidth: 1,
+            borderColor: "#EF444440",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Trash2 size={18} color="#EF4444" />
+        </Pressable>
+      </RNAnimated.View>
+    );
+  };
 
   return (
     <Animated.View
       entering={FadeInDown.duration(350)}
+      exiting={FadeOut.duration(250)}
       layout={LinearTransition}
-      style={{
-        flexDirection: "row",
-        alignItems: "flex-start",
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        borderBottomWidth: 1,
-        borderBottomColor: "#1e1e1e",
-        backgroundColor: event.read ? "transparent" : "rgba(255,153,51,0.03)",
-      }}
     >
-      {/* Icon */}
-      <View
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: 20,
-          backgroundColor: `${cfg.color}18`,
-          borderWidth: 1,
-          borderColor: `${cfg.color}30`,
-          alignItems: "center",
-          justifyContent: "center",
-          marginRight: 12,
-          flexShrink: 0,
-        }}
+      <Swipeable
+        ref={swipeableRef}
+        renderRightActions={renderRightActions}
+        overshootRight={false}
+        friction={2}
       >
-        <Icon size={18} color={cfg.color} />
-      </View>
-
-      {/* Text */}
-      <View style={{ flex: 1 }}>
-        <Text
+        <View
           style={{
-            fontFamily: "Manrope_600SemiBold",
-            color: "#f5f5f5",
-            fontSize: 14,
-            lineHeight: 20,
-            marginBottom: 4,
+            flexDirection: "row",
+            alignItems: "flex-start",
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            borderBottomWidth: isLast ? 0 : 1,
+            borderBottomColor: "#1e1e1e",
+            backgroundColor: event.read ? "#1a1a1a" : "rgba(255,153,51,0.04)",
           }}
         >
-          {cfg.label(event.restaurantName)}
-        </Text>
-        {event.partySize > 0 && (
+          {/* Icon */}
           <View
             style={{
-              flexDirection: "row",
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: `${cfg.color}18`,
+              borderWidth: 1,
+              borderColor: `${cfg.color}30`,
               alignItems: "center",
-              gap: 4,
-              marginBottom: 4,
+              justifyContent: "center",
+              marginRight: 12,
+              flexShrink: 0,
             }}
           >
-            <Users size={10} color="#555" />
+            <Icon size={18} color={cfg.color} />
+          </View>
+
+          {/* Text */}
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontFamily: "Manrope_600SemiBold",
+                color: "#f5f5f5",
+                fontSize: 14,
+                lineHeight: 20,
+                marginBottom: 4,
+              }}
+            >
+              {cfg.label(event.restaurantName)}
+            </Text>
+            {event.partySize > 0 && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  marginBottom: 4,
+                }}
+              >
+                <Users size={10} color="#555" />
+                <Text
+                  style={{
+                    fontFamily: "Manrope_500Medium",
+                    color: "#555555",
+                    fontSize: 11,
+                  }}
+                >
+                  Party of {event.partySize}
+                </Text>
+              </View>
+            )}
             <Text
               style={{
                 fontFamily: "Manrope_500Medium",
                 color: "#555555",
-                fontSize: 11,
+                fontSize: 12,
               }}
             >
-              Party of {event.partySize}
+              {timeAgo(event.timestamp)}
             </Text>
           </View>
-        )}
-        <Text
-          style={{
-            fontFamily: "Manrope_500Medium",
-            color: "#555555",
-            fontSize: 12,
-          }}
-        >
-          {timeAgo(event.timestamp)}
-        </Text>
-      </View>
 
-      {/* Unread dot */}
-      {!event.read && (
-        <View
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 4,
-            backgroundColor: "#FF9933",
-            marginTop: 6,
-            marginLeft: 8,
-            flexShrink: 0,
-          }}
-        />
-      )}
+          {/* Unread dot */}
+          {!event.read && (
+            <View
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: "#FF9933",
+                marginTop: 6,
+                marginLeft: 8,
+                flexShrink: 0,
+              }}
+            />
+          )}
+        </View>
+      </Swipeable>
     </Animated.View>
   );
 }
@@ -551,6 +688,8 @@ export default function NotificationsScreen() {
     markAllRead,
     clearAll,
     refreshActive,
+    removeEvent,
+    dismissEntry,
   } = useNotifications();
 
   const [refreshing, setRefreshing] = React.useState(false);
@@ -623,33 +762,37 @@ export default function NotificationsScreen() {
             </Text>
           </View>
 
-          {events.length > 0 && (
-            <Pressable
-              onPress={handleClearAll}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 4,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                backgroundColor: "#1a1a1a",
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: "#2a2a2a",
-              }}
-            >
-              <Trash2 size={13} color="#666" />
-              <Text
+          {(() => {
+            const hasContent = events.length > 0 || activeEntries.length > 0;
+            return (
+              <Pressable
+                onPress={hasContent ? handleClearAll : undefined}
                 style={{
-                  fontFamily: "Manrope_600SemiBold",
-                  color: "#666666",
-                  fontSize: 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  backgroundColor: "#1a1a1a",
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: "#2a2a2a",
+                  opacity: hasContent ? 1 : 0.35,
                 }}
               >
-                Clear
-              </Text>
-            </Pressable>
-          )}
+                <Trash2 size={13} color="#666" />
+                <Text
+                  style={{
+                    fontFamily: "Manrope_600SemiBold",
+                    color: "#666666",
+                    fontSize: 12,
+                  }}
+                >
+                  Clear
+                </Text>
+              </Pressable>
+            );
+          })()}
         </Animated.View>
 
         <ScrollView
@@ -721,7 +864,7 @@ export default function NotificationsScreen() {
             <>
               {/* ====== Active Waitlist Widgets ====== */}
               {activeEntries.length > 0 && (
-                <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 }}>
+                <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
                   <Text
                     style={{
                       fontFamily: "Manrope_600SemiBold",
@@ -738,14 +881,35 @@ export default function NotificationsScreen() {
                     <WaitlistWidget
                       key={entry.entryId}
                       entry={entry}
+                      onDismiss={() => {
+                        if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        dismissEntry(entry.entryId);
+                      }}
                       onPress={() => {
                         if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        router.push(
-                          `/waitlist/${entry.restaurantId}?entry_id=${entry.entryId}&party_size=${entry.partySize}` as any
-                        );
+                        if (entry.status === "seated") {
+                          router.push(`/restaurant/${entry.restaurantId}` as any);
+                        } else {
+                          router.push(
+                            `/waitlist/${entry.restaurantId}?entry_id=${entry.entryId}&party_size=${entry.partySize}` as any
+                          );
+                        }
                       }}
                     />
                   ))}
+                  {/* Single dismiss hint */}
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_500Medium",
+                      color: "#444",
+                      fontSize: 11,
+                      textAlign: "center",
+                      marginBottom: 16,
+                      marginTop: -4,
+                    }}
+                  >
+                    Tap × on completed entries to dismiss
+                  </Text>
                 </View>
               )}
 
@@ -756,7 +920,7 @@ export default function NotificationsScreen() {
                     style={{
                       paddingHorizontal: 16,
                       paddingBottom: 12,
-                      paddingTop: activeEntries.length > 0 ? 8 : 4,
+                      paddingTop: activeEntries.length > 0 ? 4 : 4,
                     }}
                   >
                     <Text
@@ -781,8 +945,16 @@ export default function NotificationsScreen() {
                       overflow: "hidden",
                     }}
                   >
-                    {events.map((event) => (
-                      <NotificationRow key={event.id} event={event} />
+                    {events.map((event, idx) => (
+                      <NotificationRow
+                        key={event.id}
+                        event={event}
+                        isLast={idx === events.length - 1}
+                        onDismiss={() => {
+                          if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          removeEvent(event.id);
+                        }}
+                      />
                     ))}
                   </View>
                 </View>

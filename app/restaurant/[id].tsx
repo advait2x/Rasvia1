@@ -69,6 +69,8 @@ export default function RestaurantDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { userCoords } = useLocation();
+  const userCoordsRef = useRef(userCoords);
+  useEffect(() => { userCoordsRef.current = userCoords; }, [userCoords]);
   const { isAdmin } = useAdminMode();
   const { session } = useAuth();
   const { addEvent, refreshActive } = useNotifications();
@@ -157,9 +159,14 @@ export default function RestaurantDetail() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "restaurants", filter: `id=eq.${id}` },
         (payload) => {
-          setRestaurant((prev) =>
-            mapSupabaseToUI(payload.new as SupabaseRestaurant, prev?.lat && prev?.long ? { latitude: prev.lat, longitude: prev.long } : userCoords)
-          );
+          setRestaurant((prev) => {
+            const mapped = mapSupabaseToUI(payload.new as SupabaseRestaurant, userCoordsRef.current ?? undefined);
+            // Preserve computed distance if userCoords unavailable
+            if (!userCoordsRef.current && prev?.distance) {
+              return { ...mapped, distance: prev.distance };
+            }
+            return mapped;
+          });
         }
       )
       .subscribe();
@@ -1008,7 +1015,7 @@ export default function RestaurantDetail() {
       )}
 
       {/* Party Size Picker */}
-      <Modal visible={showPartySizePicker} transparent animationType="slide" onRequestClose={() => setShowPartySizePicker(false)}>
+      <Modal visible={showPartySizePicker} transparent animationType="fade" onRequestClose={() => setShowPartySizePicker(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
             <Pressable style={{ flex: 1 }} onPress={() => setShowPartySizePicker(false)} />

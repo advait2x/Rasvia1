@@ -27,6 +27,13 @@ import { InAppNotification } from "@/components/InAppNotification";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
+function formatPhoneNumber(raw: string): string {
+    const digits = raw.replace(/\D/g, "").slice(0, 10);
+    if (digits.length <= 3) return digits.length ? `(${digits}` : "";
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
 export default function AuthScreen() {
     const [isSignUp, setIsSignUp] = useState(false);
     const [usePhone, setUsePhone] = useState(false);
@@ -96,14 +103,14 @@ export default function AuthScreen() {
                             id: data.user.id,
                             full_name: fullName,
                             email: email.trim(),
-                            phone_number: phone.trim(),
+                            phone_number: phone.replace(/\D/g, "").trim(),
                             created_at: new Date().toISOString(),
                         });
                     if (profileError) console.error('Profile creation error:', profileError);
                 }
             } else if (usePhone) {
                 // Phone sign-in: look up email stored in profiles, then sign in with password
-                const rawPhone = phoneSignIn.trim();
+                const rawPhone = phoneSignIn.replace(/\D/g, "").trim();
                 const { data: profile, error: lookupError } = await supabase
                     .from('profiles')
                     .select('email')
@@ -354,10 +361,10 @@ export default function AuthScreen() {
                                             fontSize: 15,
                                             marginLeft: 12,
                                         }}
-                                        placeholder="Phone number"
+                                        placeholder="(555) 000-0000"
                                         placeholderTextColor="#666666"
                                         value={phone}
-                                        onChangeText={setPhone}
+                                        onChangeText={(v) => setPhone(formatPhoneNumber(v))}
                                         keyboardType="phone-pad"
                                         autoCapitalize="none"
                                         autoCorrect={false}
@@ -483,10 +490,10 @@ export default function AuthScreen() {
                                     fontSize: 15,
                                     marginLeft: 12,
                                 }}
-                                placeholder="Phone number"
+                                placeholder="(555) 000-0000"
                                 placeholderTextColor="#666666"
                                 value={phoneSignIn}
-                                onChangeText={setPhoneSignIn}
+                                onChangeText={(v) => setPhoneSignIn(formatPhoneNumber(v))}
                                 keyboardType="phone-pad"
                                 autoCapitalize="none"
                                 autoCorrect={false}

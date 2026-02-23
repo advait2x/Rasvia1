@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
+import { useNotifications } from "@/lib/notifications-context";
 import {
   ArrowLeft,
   X,
@@ -49,6 +50,7 @@ export default function WaitlistStatus() {
   const router = useRouter();
   const { userCoords } = useLocation();
   const { session } = useAuth();
+  const { addEvent, dismissEntry } = useNotifications();
 
   // ==========================================
   // SUPABASE STATE
@@ -215,9 +217,13 @@ export default function WaitlistStatus() {
   function triggerTableReady() {
     setShowTableReady(true);
     if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 600);
-      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 1200);
+      // Deep, patterned haptic sequence so the user really feels it
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 150);
+      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 350);
+      setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 600);
+      setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 750);
+      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 950);
     }
   }
 
@@ -296,13 +302,23 @@ export default function WaitlistStatus() {
                 .from("waitlist_entries")
                 .update({ status: "cancelled" })
                 .eq("id", entry_id);
+              // Add "left" event and remove the active widget
+              addEvent({
+                type: "left",
+                restaurantName: restaurant?.name ?? "Restaurant",
+                restaurantId: String(id),
+                entryId: entry_id,
+                partySize: myPartySize,
+                timestamp: new Date().toISOString(),
+              });
+              dismissEntry(entry_id);
             }
             router.back();
           },
         },
       ]
     );
-  }, [router, entry_id]);
+  }, [router, entry_id, restaurant?.name, id, myPartySize, addEvent, dismissEntry]);
 
   const handleAddAppetizer = useCallback((item: MenuItem) => {
     if (Platform.OS !== "web") {

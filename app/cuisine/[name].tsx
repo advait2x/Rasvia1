@@ -23,6 +23,7 @@ import * as Haptics from "expo-haptics";
 import { supabase } from "@/lib/supabase";
 import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant, haversineDistance } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
+import { useAdminMode } from "@/hooks/useAdminMode";
 
 const cuisineEmojis: Record<string, string> = {
   "North Indian": "🍛",
@@ -37,6 +38,7 @@ export default function CuisinePage() {
   const { name } = useLocalSearchParams<{ name: string }>();
   const router = useRouter();
   const { userCoords } = useLocation();
+  const { isAdmin } = useAdminMode();
   const [restaurants, setRestaurants] = useState<UIRestaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<"wait" | "distance">("wait");
@@ -55,7 +57,9 @@ export default function CuisinePage() {
 
         if (error) throw error;
         if (data) {
-          const uiRestaurants = data.map((r: SupabaseRestaurant) => mapSupabaseToUI(r, userCoords));
+          const uiRestaurants = data
+            .map((r: SupabaseRestaurant) => mapSupabaseToUI(r, userCoords))
+            .filter((r) => isAdmin || r.isEnabled);
           setRestaurants(uiRestaurants);
         }
       } catch (error) {

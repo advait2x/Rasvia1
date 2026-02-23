@@ -481,7 +481,7 @@ export default function MapScreen() {
       if (Platform.OS !== "web") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
-      router.push(`/restaurant/${restaurant.id}` as any);
+      router.navigate(`/restaurant/${restaurant.id}` as any);
     },
     [router],
   );
@@ -589,7 +589,7 @@ export default function MapScreen() {
           restaurant={selectedRestaurant}
           onDismiss={() => setSelectedRestaurant(null)}
           onPress={() =>
-            router.push(`/restaurant/${selectedRestaurant.id}` as any)
+            router.navigate(`/restaurant/${selectedRestaurant.id}` as any)
           }
           isAdmin={isAdmin}
           onAdminPress={() => setAdminPanelRestaurant(selectedRestaurant)}

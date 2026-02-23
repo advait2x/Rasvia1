@@ -90,24 +90,24 @@ export function InAppNotification({
             case "success":
                 return {
                     icon: CheckCircle,
-                    color: "#22C55E",
-                    bgColor: "rgba(34, 197, 94, 0.4)",
-                    borderColor: "rgba(34, 197, 94, 0.5)",
+                    color: "#FFFFFF",
+                    bgColor: "#16A34A",
+                    borderColor: "#15803D",
                 };
             case "info":
                 return {
                     icon: Info,
-                    color: "#3B82F6",
-                    bgColor: "rgba(59, 130, 246, 0.4)",
-                    borderColor: "rgba(59, 130, 246, 0.5)",
+                    color: "#FFFFFF",
+                    bgColor: "#2563EB",
+                    borderColor: "#1D4ED8",
                 };
             case "error":
             default:
                 return {
                     icon: AlertCircle,
-                    color: "#EF4444",
-                    bgColor: "rgba(239, 68, 68, 1)",
-                    borderColor: "rgba(239, 68, 68, 0.5)",
+                    color: "#FFFFFF",
+                    bgColor: "#DC2626",
+                    borderColor: "#B91C1C",
                 };
         }
     };
