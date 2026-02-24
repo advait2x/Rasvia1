@@ -171,6 +171,14 @@ function AuthGate() {
         name="join/[id]"
         options={{ headerShown: false, animation: "slide_from_bottom" }}
       />
+      <Stack.Screen
+        name="favorites"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
+        name="my-orders"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
     </Stack>
   );
 }

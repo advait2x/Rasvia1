@@ -51,6 +51,7 @@ import {
   mapSupabaseToUI,
   mapMenuItemToUI,
   haversineDistance,
+  parseFavorites,
 } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
 import { useAuth } from "@/lib/auth-context";
@@ -211,6 +212,20 @@ export default function RestaurantDetail() {
       if (error) throw error;
       if (data) {
         setRestaurant(mapSupabaseToUI(data as SupabaseRestaurant, userCoords));
+      }
+
+      // Check if this restaurant is favorited by the current user
+      if (session?.user?.id) {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("favorite_restaurants")
+          .eq("id", session.user.id)
+          .single();
+
+        if (profileData && profileData.favorite_restaurants) {
+          const arr = parseFavorites(profileData.favorite_restaurants);
+          setIsFavorited(arr.includes(Number(id)));
+        }
       }
     } catch (error) {
       console.error('Error fetching restaurant:', error);
@@ -417,12 +432,54 @@ export default function RestaurantDetail() {
     }
   }, [partySize, customParty, session, restaurant?.id, router]);
 
-  const handleToggleFavorite = useCallback(() => {
+  const handleToggleFavorite = useCallback(async () => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    setIsFavorited((prev) => !prev);
-  }, []);
+
+    if (!session?.user?.id) {
+      Alert.alert("Sign In Required", "You must be signed in to favorite restaurants.");
+      return;
+    }
+
+    const newFavoritedState = !isFavorited;
+    setIsFavorited(newFavoritedState); // Optimistic generic update
+
+    try {
+      // First, get current favorites
+      const { data: profileData, error: fetchError } = await supabase
+        .from("profiles")
+        .select("favorite_restaurants")
+        .eq("id", session.user.id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      let currentFavorites = parseFavorites(profileData?.favorite_restaurants);
+
+      if (newFavoritedState) {
+        // Add if not present
+        if (!currentFavorites.includes(Number(id))) {
+          currentFavorites.push(Number(id));
+        }
+      } else {
+        // Remove if present
+        currentFavorites = currentFavorites.filter(favId => favId !== Number(id));
+      }
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ favorite_restaurants: currentFavorites })
+        .eq("id", session.user.id);
+
+      if (updateError) throw updateError;
+    } catch (error) {
+      console.error("Error toggling favorite:", error);
+      // Revert optimistic update
+      setIsFavorited(!newFavoritedState);
+      Alert.alert("Error", "Could not update favorites. Please try again.");
+    }
+  }, [isFavorited, session, id]);
 
   const joinBtnScale = useSharedValue(1);
   const joinBtnStyle = useAnimatedStyle(() => ({
@@ -825,6 +882,9 @@ export default function RestaurantDetail() {
           <Pressable 
             className="flex-row items-center mt-4"
             onPress={() => {
+              if (Platform.OS !== "web") {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }
               if (restaurant.lat && restaurant.long) {
                 router.push(
                   `/map?targetLat=${restaurant.lat}&targetLng=${restaurant.long}&restaurantId=${restaurant.id}` as any

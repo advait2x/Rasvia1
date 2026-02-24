@@ -34,6 +34,7 @@ import {
   Activity,
   Shield,
   Phone,
+  Heart,
 } from "lucide-react-native";
 import Animated, {
   FadeIn,
@@ -998,11 +999,96 @@ export default function ProfileSettingsScreen() {
             </View>
           </Animated.View>
 
+
+          {/* Settings List */}
+          <Animated.View
+            entering={FadeInDown.delay(200).duration(500)}
+            className="mx-5 mb-8"
+            style={{
+              backgroundColor: "#1a1a1a",
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: "#2a2a2a",
+              overflow: "hidden",
+            }}
+          >
+            <SettingsRow
+              icon={<ShoppingBag size={20} color="#FF9933" />}
+              label="My Orders"
+              hasChevron
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.selectionAsync();
+                router.push("/my-orders" as any);
+              }}
+            />
+            <Divider />
+            <SettingsRow
+              icon={<CreditCard size={20} color="#FF9933" />}
+              label="Payment Methods"
+              hasChevron
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.selectionAsync();
+              }}
+            />
+            <Divider />
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 20,
+                paddingVertical: 16,
+              }}
+            >
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  backgroundColor: "rgba(255, 153, 51, 0.12)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 14,
+                }}
+              >
+                <Bell size={20} color="#FF9933" />
+              </View>
+              <Text
+                style={{
+                  flex: 1,
+                  fontFamily: "Manrope_600SemiBold",
+                  color: "#f5f5f5",
+                  fontSize: 15,
+                }}
+              >
+                Notifications
+              </Text>
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={(val) => {
+                  setNotificationsEnabled(val);
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                }}
+                trackColor={{ false: "#333333", true: "rgba(255,153,51,0.4)" }}
+                thumbColor={notificationsEnabled ? "#FF9933" : "#666666"}
+              />
+            </View>
+            <Divider />
+            <SettingsRow
+              icon={<Heart size={20} color="#EF4444" />}
+              label="Favorites"
+              hasChevron
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.selectionAsync();
+                router.push("/favorites" as any);
+              }}
+            />
+          </Animated.View>
+
           {/* ==========================================
                         LOCATION SETTINGS SECTION
                     ========================================== */}
           <Animated.View
-            entering={FadeInDown.delay(175).duration(500)}
+            entering={FadeInDown.delay(220).duration(500)}
             className="mx-5 mb-8"
           >
             {/* Section Header */}
@@ -1202,79 +1288,6 @@ export default function ProfileSettingsScreen() {
                   </Pressable>
                 </Animated.View>
               )}
-            </View>
-          </Animated.View>
-
-          {/* Settings List */}
-          <Animated.View
-            entering={FadeInDown.delay(200).duration(500)}
-            className="mx-5 mb-8"
-            style={{
-              backgroundColor: "#1a1a1a",
-              borderRadius: 20,
-              borderWidth: 1,
-              borderColor: "#2a2a2a",
-              overflow: "hidden",
-            }}
-          >
-            <SettingsRow
-              icon={<ShoppingBag size={20} color="#FF9933" />}
-              label="My Orders"
-              hasChevron
-              onPress={() => {
-                if (Platform.OS !== "web") Haptics.selectionAsync();
-              }}
-            />
-            <Divider />
-            <SettingsRow
-              icon={<CreditCard size={20} color="#FF9933" />}
-              label="Payment Methods"
-              hasChevron
-              onPress={() => {
-                if (Platform.OS !== "web") Haptics.selectionAsync();
-              }}
-            />
-            <Divider />
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                paddingHorizontal: 20,
-                paddingVertical: 16,
-              }}
-            >
-              <View
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  backgroundColor: "rgba(255, 153, 51, 0.12)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginRight: 14,
-                }}
-              >
-                <Bell size={20} color="#FF9933" />
-              </View>
-              <Text
-                style={{
-                  flex: 1,
-                  fontFamily: "Manrope_600SemiBold",
-                  color: "#f5f5f5",
-                  fontSize: 15,
-                }}
-              >
-                Notifications
-              </Text>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={(val) => {
-                  setNotificationsEnabled(val);
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                }}
-                trackColor={{ false: "#333333", true: "rgba(255,153,51,0.4)" }}
-                thumbColor={notificationsEnabled ? "#FF9933" : "#666666"}
-              />
             </View>
           </Animated.View>
 

@@ -215,3 +215,29 @@ export function mapMenuItemToUI(item: SupabaseMenuItem): UIMenuItem {
         spiceLevel: item.is_spicy ? 2 : 0, // Simple mapping, can enhance later
     };
 }
+
+/**
+ * Robustly parses a favorite_restaurants column value from Supabase into a number array.
+ * This handles cases where the column is accidentally created as a JSON string, a Postgres array string `"{1,2}"`, or a native array.
+ */
+export function parseFavorites(data: any): number[] {
+    if (!data) return [];
+    if (Array.isArray(data)) return data.map(Number);
+    if (typeof data === 'string') {
+        // Try parsing as JSON first
+        try {
+            const parsed = JSON.parse(data);
+            if (Array.isArray(parsed)) return parsed.map(Number);
+        } catch {}
+        
+        // Handle Postgres array literal format "{1,2}"
+        if (data.startsWith('{') && data.endsWith('}')) {
+            return data
+                .slice(1, -1)
+                .split(',')
+                .map(s => Number(s.trim()))
+                .filter(n => !isNaN(n));
+        }
+    }
+    return [];
+}
