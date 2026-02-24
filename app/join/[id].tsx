@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
-    View, Text, TextInput, TouchableOpacity, FlatList,
+    View, Text, TextInput, FlatList, SectionList,
     Alert, ActivityIndicator, Modal, Platform, ScrollView,
     Pressable, Image,
 } from 'react-native';
@@ -9,23 +9,26 @@ import { supabase } from '../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useNotifications } from '../../lib/notifications-context';
+import { useAuth } from '../../lib/auth-context';
 import {
-    ArrowLeft, ShoppingCart, Plus, X, Coffee, Sun, Moon,
+    ArrowLeft, ShoppingCart, Plus, Minus, X, Coffee, Sun, Moon,
     Star, Clock, Leaf, Flame, ChevronDown, ChevronUp,
-    CheckCircle2, Users, DollarSign,
+    CheckCircle2, Users, DollarSign, Trash2, Send,
+    Crown, Search, Filter,
 } from 'lucide-react-native';
-import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeIn, FadeInUp } from 'react-native-reanimated';
 
-// ─── Meal-Period Config ─────────────────────────────────────────────────────
 type MealPeriod = 'breakfast' | 'lunch' | 'dinner' | 'specials' | 'all_day';
 
 const MEAL_PERIOD_CFG: Record<MealPeriod, { label: string; color: string; bg: string; border: string; Icon: any }> = {
     breakfast: { label: 'Breakfast', color: '#F97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.35)', Icon: Coffee },
-    lunch:     { label: 'Lunch',     color: '#22C55E', bg: 'rgba(34,197,94,0.15)',  border: 'rgba(34,197,94,0.35)',  Icon: Sun  },
-    dinner:    { label: 'Dinner',    color: '#818CF8', bg: 'rgba(129,140,248,0.15)',border: 'rgba(129,140,248,0.35)',Icon: Moon },
+    lunch:     { label: 'Lunch',     color: '#22C55E', bg: 'rgba(34,197,94,0.15)',  border: 'rgba(34,197,94,0.35)',  Icon: Sun },
+    dinner:    { label: 'Dinner',    color: '#818CF8', bg: 'rgba(129,140,248,0.15)', border: 'rgba(129,140,248,0.35)', Icon: Moon },
     specials:  { label: 'Specials',  color: '#F59E0B', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.35)', Icon: Star },
-    all_day:   { label: 'All Day',   color: '#94A3B8', bg: 'rgba(148,163,184,0.15)',border: 'rgba(148,163,184,0.35)',Icon: Clock },
+    all_day:   { label: 'All Day',   color: '#94A3B8', bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.35)', Icon: Clock },
 };
+
+const MEMBER_COLORS = ['#FF9933', '#22C55E', '#3B82F6', '#A855F7', '#EC4899', '#F59E0B', '#06B6D4', '#EF4444'];
 
 function MealPeriodTag({ period }: { period: MealPeriod }) {
     const cfg = MEAL_PERIOD_CFG[period];
@@ -45,114 +48,246 @@ function MealPeriodTag({ period }: { period: MealPeriod }) {
     );
 }
 
-// ─── Main Screen ─────────────────────────────────────────────────────────────
+function getMemberColor(name: string, allNames: string[]): string {
+    const idx = allNames.indexOf(name);
+    return MEMBER_COLORS[idx % MEMBER_COLORS.length];
+}
+
 export default function JoinPartyScreen() {
-    const { id } = useLocalSearchParams();
+    const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
     const { addEvent } = useNotifications();
+    const { session } = useAuth();
 
     const goBack = () => {
-        if (router.canGoBack()) {
-            router.back();
-        } else {
-            router.replace('/');
-        }
+        if (router.canGoBack()) router.back();
+        else router.replace('/');
     };
 
-    const [guestName, setGuestName]         = useState('');
-    const [isJoined, setIsJoined]           = useState(false);
-    const [loading, setLoading]             = useState(true);
-    const [menu, setMenu]                   = useState<any[]>([]);
-    const [cartItems, setCartItems]         = useState<any[]>([]);
+    const [guestName, setGuestName] = useState('');
+    const [isJoined, setIsJoined] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [menu, setMenu] = useState<any[]>([]);
+    const [cartItems, setCartItems] = useState<any[]>([]);
     const [restaurantName, setRestaurantName] = useState('');
     const [restaurantImage, setRestaurantImage] = useState<string | null>(null);
+    const [restaurantId, setRestaurantId] = useState<number | null>(null);
     const [showCartModal, setShowCartModal] = useState(false);
     const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
-    const [isHost, setIsHost]               = useState(false);
-    const [submitting, setSubmitting]       = useState(false);
-    const [submitted, setSubmitted]         = useState(false);
+    const [isHost, setIsHost] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [submitted, setSubmitted] = useState(false);
+    const [sessionError, setSessionError] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState<string>('all');
+    const [showMemberBreakdown, setShowMemberBreakdown] = useState(true);
+
+    const channelRef = useRef<any>(null);
+    const fetchCartRef = useRef<() => Promise<void>>(async () => {});
+    const sessionId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '';
+    const userId = session?.user?.id ?? '';
+
+    // User-scoped storage keys so multiple accounts on one device never collide
+    const nameKey = userId ? `party_name_${userId}_${sessionId}` : `party_name_anon_${sessionId}`;
+    const activeOrderKey = userId ? `rasvia:active_group_order:${userId}` : 'rasvia:active_group_order:anon';
 
     const totalItems = cartItems.length;
     const totalPrice = cartItems.reduce((sum, item) => {
         const price = item.menu_items?.price ?? item.price ?? 0;
-        return sum + price;
+        return sum + Number(price);
     }, 0);
 
-    useEffect(() => { if (id) initializeParty(); }, [id]);
+    const uniqueMembers = useMemo(() => {
+        const names = new Set<string>();
+        cartItems.forEach(item => { if (item.added_by_name) names.add(item.added_by_name); });
+        return Array.from(names);
+    }, [cartItems]);
 
-    const initializeParty = async () => {
-        try {
-            const storedName = await AsyncStorage.getItem(`party_name_${id}`);
-            if (storedName) { setGuestName(storedName); setIsJoined(true); }
+    const memberTotals = useMemo(() => {
+        const totals: Record<string, { items: any[]; total: number }> = {};
+        cartItems.forEach(item => {
+            const name = item.added_by_name || 'Unknown';
+            if (!totals[name]) totals[name] = { items: [], total: 0 };
+            totals[name].items.push(item);
+            totals[name].total += Number(item.menu_items?.price ?? item.price ?? 0);
+        });
+        return totals;
+    }, [cartItems]);
 
-            const { data: { user } } = await supabase.auth.getUser();
+    const menuCategories = useMemo(() => {
+        const cats = new Set<string>();
+        menu.forEach(item => {
+            if (item.meal_period) cats.add(item.meal_period);
+        });
+        return ['all', ...Array.from(cats)];
+    }, [menu]);
 
-            const { data: session, error } = await supabase
-                .from('party_sessions')
-                .select('restaurant_id, host_user_id, status, restaurants(name, image_url)')
-                .eq('id', id)
-                .single();
-
-            if (error || !session) { setLoading(false); return; }
-
-            if (session.status === 'submitted') setSubmitted(true);
-
-            if (user && session.host_user_id === user.id) {
-                setIsHost(true);
-                if (!storedName) {
-                    setGuestName('Host'); setIsJoined(true);
-                    AsyncStorage.setItem(`party_name_${id}`, 'Host');
-                }
-            }
-
-            const rest = session.restaurants as any;
-            setRestaurantName(rest?.name ?? 'Restaurant');
-            setRestaurantImage(rest?.image_url ?? null);
-
-            const { data: menuItems } = await supabase
-                .from('menu_items')
-                .select('*')
-                .eq('restaurant_id', session.restaurant_id)
-                .neq('is_available', false);
-
-            setMenu(menuItems ?? []);
-            fetchCart();
-
-            const channel = supabase
-                .channel(`party-${id}`)
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'party_items', filter: `session_id=eq.${id}` }, fetchCart)
-                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'party_sessions', filter: `id=eq.${id}` }, (payload) => {
-                    if (payload.new?.status === 'submitted') setSubmitted(true);
-                })
-                .subscribe();
-
-            return () => { supabase.removeChannel(channel); };
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
+    const filteredMenu = useMemo(() => {
+        let filtered = menu;
+        if (selectedCategory !== 'all') {
+            filtered = filtered.filter(item => item.meal_period === selectedCategory);
         }
-    };
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase().trim();
+            filtered = filtered.filter(item =>
+                item.name?.toLowerCase().includes(q) ||
+                item.description?.toLowerCase().includes(q)
+            );
+        }
+        return filtered;
+    }, [menu, selectedCategory, searchQuery]);
 
-    const fetchCart = async () => {
-        const { data } = await supabase
-            .from('party_items')
-            .select('*, menu_items(name, price, description, image_url)')
-            .eq('session_id', id)
-            .order('created_at', { ascending: true });
-        setCartItems(data ?? []);
-    };
+    // Cart fetcher stored in a ref so subscriptions always call the latest version
+    // without causing effect dependency changes
+    const doFetchCart = useCallback(async () => {
+        if (!sessionId) return;
+        try {
+            const { data } = await supabase
+                .from('party_items')
+                .select('*, menu_items(name, price, description, image_url)')
+                .eq('session_id', sessionId)
+                .order('created_at', { ascending: true });
+            setCartItems(data ?? []);
+        } catch {
+            // silently ignore cart fetch errors
+        }
+    }, [sessionId]);
+
+    fetchCartRef.current = doFetchCart;
+
+    // Initialize party session data — runs when sessionId + userId are available.
+    // Uses auth-context session (local, always in sync) instead of getUser() (network call).
+    useEffect(() => {
+        if (!sessionId) {
+            setLoading(false);
+            return;
+        }
+
+        let active = true;
+
+        const init = async () => {
+            try {
+                // Read the user-scoped name for this session
+                const storedName = await AsyncStorage.getItem(nameKey);
+                if (storedName) {
+                    setGuestName(storedName);
+                    setIsJoined(true);
+                }
+
+                const { data: sess, error } = await supabase
+                    .from('party_sessions')
+                    .select('restaurant_id, host_user_id, status, restaurants(name, image_url)')
+                    .eq('id', sessionId)
+                    .single();
+
+                if (error || !sess) {
+                    setSessionError(true);
+                    return;
+                }
+
+                if (sess.status === 'submitted') setSubmitted(true);
+                if (sess.status === 'cancelled') { setSessionError(true); return; }
+                setRestaurantId(sess.restaurant_id);
+
+                // Host detection: compare against the locally-available session user
+                const currentUserId = userId;
+                if (currentUserId && sess.host_user_id === currentUserId) {
+                    setIsHost(true);
+                    if (!storedName) {
+                        const { data: profile } = await supabase
+                            .from('profiles')
+                            .select('full_name')
+                            .eq('id', currentUserId)
+                            .single();
+                        const hostName = profile?.full_name || 'Host';
+                        setGuestName(hostName);
+                        setIsJoined(true);
+                        AsyncStorage.setItem(nameKey, hostName);
+                    }
+                }
+
+                const rest = sess.restaurants as any;
+                setRestaurantName(rest?.name ?? 'Restaurant');
+                setRestaurantImage(rest?.image_url ?? null);
+
+                const { data: menuItems } = await supabase
+                    .from('menu_items')
+                    .select('*')
+                    .eq('restaurant_id', sess.restaurant_id)
+                    .neq('is_available', false);
+
+                setMenu(menuItems ?? []);
+
+                const { data: cartData } = await supabase
+                    .from('party_items')
+                    .select('*, menu_items(name, price, description, image_url)')
+                    .eq('session_id', sessionId)
+                    .order('created_at', { ascending: true });
+
+                setCartItems(cartData ?? []);
+            } catch (e) {
+                console.error('initializeParty error:', e);
+                if (active) setSessionError(true);
+            } finally {
+                if (active) setLoading(false);
+            }
+        };
+
+        init();
+        return () => { active = false; };
+    }, [sessionId, userId, nameKey]);
+
+    // Real-time subscriptions — only depends on sessionId (stable string)
+    // Uses ref for fetchCart so it never causes re-subscription
+    useEffect(() => {
+        if (!sessionId) return;
+
+        const channel = supabase
+            .channel(`party-live-${sessionId}`)
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'party_items', filter: `session_id=eq.${sessionId}` },
+                () => { fetchCartRef.current?.(); }
+            )
+            .on('postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'party_sessions', filter: `id=eq.${sessionId}` },
+                (payload) => {
+                    if (payload.new?.status === 'submitted') setSubmitted(true);
+                }
+            )
+            .subscribe();
+
+        channelRef.current = channel;
+
+        return () => {
+            supabase.removeChannel(channel);
+            channelRef.current = null;
+        };
+    }, [sessionId]);
+
+    // Persist session ID so home page can find it (user-scoped)
+    useEffect(() => {
+        if (sessionId && isJoined && restaurantName && userId) {
+            AsyncStorage.setItem(activeOrderKey, JSON.stringify({
+                sessionId,
+                restaurantName,
+                isHost,
+                joinedAt: new Date().toISOString(),
+            }));
+        }
+    }, [sessionId, isJoined, restaurantName, isHost, userId, activeOrderKey]);
 
     const handleJoin = async () => {
         if (!guestName.trim()) return;
-        await AsyncStorage.setItem(`party_name_${id}`, guestName);
+        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        await AsyncStorage.setItem(nameKey, guestName.trim());
+        setGuestName(guestName.trim());
         setIsJoined(true);
         if (!isHost) {
             addEvent({
-                type: "group_joined",
+                type: 'group_joined',
                 restaurantName,
-                restaurantId: String(id),
-                entryId: String(id),
+                restaurantId: String(sessionId),
+                entryId: String(sessionId),
                 partySize: 1,
                 timestamp: new Date().toISOString(),
             });
@@ -160,14 +295,20 @@ export default function JoinPartyScreen() {
     };
 
     const addToCart = async (item: any) => {
+        if (submitted) return;
         if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
         const tempId = `temp-${Math.random()}`;
-        const optimistic = { id: tempId, menu_items: item, added_by_name: guestName, price: item.price };
+        const optimistic = {
+            id: tempId,
+            menu_items: { name: item.name, price: item.price, description: item.description, image_url: item.image_url },
+            added_by_name: guestName,
+            quantity: 1,
+        };
         setCartItems(prev => [...prev, optimistic]);
 
         const { error } = await supabase.from('party_items').insert({
-            session_id: id,
+            session_id: sessionId,
             menu_item_id: item.id,
             added_by_name: guestName,
             quantity: 1,
@@ -179,116 +320,256 @@ export default function JoinPartyScreen() {
         }
     };
 
-    const submitOrderToKitchen = async () => {
-        setSubmitting(true);
-        try {
-            // 1. Mark session as submitted
-            const { error } = await supabase
-                .from('party_sessions')
-                .update({ status: 'submitted', submitted_at: new Date().toISOString() })
-                .eq('id', id);
+    const removeFromCart = async (itemId: string) => {
+        if (submitted) return;
+        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-            if (error) throw error;
+        setCartItems(prev => prev.filter(i => i.id !== itemId));
 
-            // 2. Create a consolidated order summary record
-            const orderSummary = cartItems.map(ci => ({
-                name: ci.menu_items?.name ?? 'Unknown',
-                price: ci.menu_items?.price ?? 0,
-                added_by: ci.added_by_name,
-            }));
-
-            await supabase.from('group_orders').insert({
-                party_session_id: id,
-                restaurant_id: null, // populated server-side via join
-                items: orderSummary,
-                total: totalPrice,
-                submitted_at: new Date().toISOString(),
-            }).then(() => {}); // best-effort, ignore if table doesn't exist yet
-
-            setSubmitted(true);
-            setShowCartModal(false);
-            if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            addEvent({
-                type: "group_submitted",
-                restaurantName,
-                restaurantId: String(id),
-                entryId: String(id),
-                partySize: cartItems.length,
-                timestamp: new Date().toISOString(),
-            });
-        } catch (e: any) {
-            Alert.alert('Error', e.message);
-        } finally {
-            setSubmitting(false);
+        if (!itemId.startsWith('temp-')) {
+            const { error } = await supabase.from('party_items').delete().eq('id', itemId);
+            if (error) doFetchCart();
         }
     };
 
-    // ─── Loading ───────────────────────────────────────────────────────────
+    const cancelGroupOrder = async () => {
+        Alert.alert(
+            'Cancel Group Order',
+            'This will discard the entire group order and all items. Everyone in the group will be removed.\n\nThis cannot be undone.',
+            [
+                { text: 'Keep Order', style: 'cancel' },
+                {
+                    text: 'Cancel Order',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await supabase.from('party_items').delete().eq('session_id', sessionId);
+                            await supabase.from('party_sessions').update({ status: 'cancelled' }).eq('id', sessionId);
+                            await AsyncStorage.removeItem(activeOrderKey);
+                            if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                            goBack();
+                        } catch (e: any) {
+                            Alert.alert('Error', e.message || 'Could not cancel order.');
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    const submitOrderToKitchen = async () => {
+        if (!isHost || cartItems.length === 0) return;
+
+        Alert.alert(
+            'Submit Group Order',
+            `Send ${totalItems} items ($${totalPrice.toFixed(2)}) to the kitchen?\n\nThis action cannot be undone.`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Submit',
+                    style: 'default',
+                    onPress: async () => {
+                        setSubmitting(true);
+                        try {
+                            const { error } = await supabase
+                                .from('party_sessions')
+                                .update({ status: 'submitted', submitted_at: new Date().toISOString() })
+                                .eq('id', sessionId);
+
+                            if (error) throw error;
+
+                            const orderSummary = cartItems.map(ci => ({
+                                name: ci.menu_items?.name ?? 'Unknown',
+                                price: Number(ci.menu_items?.price ?? 0),
+                                added_by: ci.added_by_name,
+                            }));
+
+                            await supabase.from('group_orders').insert({
+                                party_session_id: sessionId,
+                                restaurant_id: restaurantId,
+                                items: orderSummary,
+                                total: totalPrice,
+                                submitted_at: new Date().toISOString(),
+                            }).then(() => {});
+
+                            setSubmitted(true);
+                            setShowCartModal(false);
+                            if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+                            addEvent({
+                                type: 'group_submitted',
+                                restaurantName,
+                                restaurantId: String(sessionId),
+                                entryId: String(sessionId),
+                                partySize: cartItems.length,
+                                timestamp: new Date().toISOString(),
+                            });
+
+                            AsyncStorage.removeItem(activeOrderKey);
+                        } catch (e: any) {
+                            Alert.alert('Error', e.message);
+                        } finally {
+                            setSubmitting(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    // ─── Loading ─────────────────────────────────────────────────────────
     if (loading) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f0f0f' }}>
+            <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
                 <Stack.Screen options={{ headerShown: false }} />
-                <ActivityIndicator size="large" color="#FF9933" />
+                <View style={{ paddingTop: Platform.OS === 'ios' ? 56 : 40, paddingHorizontal: 20 }}>
+                    <Pressable onPress={goBack} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center' }}>
+                        <ArrowLeft size={20} color="#f5f5f5" />
+                    </Pressable>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color="#FF9933" />
+                    <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 14, marginTop: 12 }}>
+                        Loading group order…
+                    </Text>
+                </View>
             </View>
         );
     }
 
-    // ─── Submitted State ──────────────────────────────────────────────────
+    // ─── Error State ─────────────────────────────────────────────────────
+    if (sessionError) {
+        return (
+            <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={{ paddingTop: Platform.OS === 'ios' ? 56 : 40, paddingHorizontal: 20 }}>
+                    <Pressable onPress={goBack} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center' }}>
+                        <ArrowLeft size={20} color="#f5f5f5" />
+                    </Pressable>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+                    <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 2, borderColor: 'rgba(239,68,68,0.4)', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+                        <X size={40} color="#EF4444" />
+                    </View>
+                    <Text style={{ fontFamily: 'BricolageGrotesque_800ExtraBold', color: '#f5f5f5', fontSize: 24, textAlign: 'center', marginBottom: 12 }}>
+                        Session Not Found
+                    </Text>
+                    <Text style={{ fontFamily: 'Manrope_500Medium', color: '#999', fontSize: 15, textAlign: 'center', lineHeight: 22 }}>
+                        This group order session may have expired or the link is invalid.
+                    </Text>
+                    <Pressable onPress={goBack} style={{ marginTop: 24, backgroundColor: '#FF9933', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32 }}>
+                        <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#0f0f0f', fontSize: 16 }}>Go Home</Text>
+                    </Pressable>
+                </View>
+            </View>
+        );
+    }
+
+    // ─── Submitted State ─────────────────────────────────────────────────
     if (submitted) {
         return (
             <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
                 <Stack.Screen options={{ headerShown: false }} />
-
-                {/* Back button top-left */}
                 <View style={{ paddingTop: Platform.OS === 'ios' ? 56 : 40, paddingHorizontal: 20 }}>
-                    <Pressable
-                        onPress={() => goBack()}
-                        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center' }}
-                    >
+                    <Pressable onPress={goBack} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center' }}>
                         <ArrowLeft size={20} color="#f5f5f5" />
                     </Pressable>
                 </View>
 
-                {/* Centered content */}
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
-                    <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(34,197,94,0.12)', borderWidth: 2, borderColor: 'rgba(34,197,94,0.4)', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
-                        <CheckCircle2 size={40} color="#22C55E" />
+                <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+                    <View style={{ alignItems: 'center', padding: 32, paddingTop: 40 }}>
+                        <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(34,197,94,0.12)', borderWidth: 2, borderColor: 'rgba(34,197,94,0.4)', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+                            <CheckCircle2 size={40} color="#22C55E" />
+                        </View>
+                        <Text style={{ fontFamily: 'BricolageGrotesque_800ExtraBold', color: '#f5f5f5', fontSize: 26, textAlign: 'center', marginBottom: 8 }}>
+                            Order Submitted!
+                        </Text>
+                        <Text style={{ fontFamily: 'Manrope_500Medium', color: '#999', fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: 4 }}>
+                            Your group order at {restaurantName} has been sent to the kitchen.
+                        </Text>
                     </View>
-                    <Text style={{ fontFamily: 'BricolageGrotesque_800ExtraBold', color: '#f5f5f5', fontSize: 26, textAlign: 'center', marginBottom: 12 }}>
-                        Order Submitted!
-                    </Text>
-                    <Text style={{ fontFamily: 'Manrope_500Medium', color: '#999', fontSize: 15, textAlign: 'center', lineHeight: 22 }}>
-                        The host has sent your group order to the kitchen. Sit back and enjoy!
-                    </Text>
-                </View>
+
+                    {/* Order Summary */}
+                    <View style={{ paddingHorizontal: 20 }}>
+                        {/* Grand Total */}
+                        <View style={{ backgroundColor: '#1a1a1a', borderRadius: 20, borderWidth: 1, borderColor: '#2a2a2a', padding: 20, marginBottom: 16 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 18 }}>Grand Total</Text>
+                                <Text style={{ fontFamily: 'BricolageGrotesque_800ExtraBold', color: '#FF9933', fontSize: 24 }}>${totalPrice.toFixed(2)}</Text>
+                            </View>
+                            <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 13, marginTop: 4 }}>
+                                {totalItems} items from {uniqueMembers.length} {uniqueMembers.length === 1 ? 'member' : 'members'}
+                            </Text>
+                        </View>
+
+                        {/* Per-member breakdown */}
+                        {Object.entries(memberTotals).map(([name, data]) => {
+                            const color = getMemberColor(name, uniqueMembers);
+                            return (
+                                <Animated.View key={name} entering={FadeInDown.duration(300)}>
+                                    <View style={{ backgroundColor: '#1a1a1a', borderRadius: 16, borderWidth: 1, borderColor: '#2a2a2a', padding: 16, marginBottom: 10 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: `${color}20`, borderWidth: 2, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color, fontSize: 13 }}>{name.charAt(0).toUpperCase()}</Text>
+                                                </View>
+                                                <View>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                        <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 15 }}>{name}</Text>
+                                                        {name === guestName && isHost && (
+                                                            <Crown size={12} color="#FF9933" />
+                                                        )}
+                                                    </View>
+                                                    <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 12 }}>{data.items.length} items</Text>
+                                                </View>
+                                            </View>
+                                            <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color, fontSize: 16 }}>${data.total.toFixed(2)}</Text>
+                                        </View>
+                                        {data.items.map(item => (
+                                            <View key={item.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#262626' }}>
+                                                <Text style={{ fontFamily: 'Manrope_500Medium', color: '#aaa', fontSize: 13, flex: 1 }} numberOfLines={1}>{item.menu_items?.name ?? 'Item'}</Text>
+                                                <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#888', fontSize: 13 }}>${Number(item.menu_items?.price ?? 0).toFixed(2)}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                </Animated.View>
+                            );
+                        })}
+                    </View>
+                </ScrollView>
             </View>
         );
     }
 
-    // ─── Join Screen ──────────────────────────────────────────────────────
+    // ─── Join Screen ─────────────────────────────────────────────────────
     if (!isJoined) {
         return (
             <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
                 <Stack.Screen options={{ headerShown: false }} />
-
-                {/* Header image */}
                 {restaurantImage && (
                     <Image source={{ uri: restaurantImage }} style={{ width: '100%', height: 220 }} resizeMode="cover" />
                 )}
-
                 <View style={{ flex: 1, padding: 28, justifyContent: 'center' }}>
-                    {/* Back */}
                     <Pressable onPress={goBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 32 }}>
                         <ArrowLeft size={18} color="#999" />
                         <Text style={{ fontFamily: 'Manrope_500Medium', color: '#999', fontSize: 14 }}>Back</Text>
                     </Pressable>
 
                     <Text style={{ fontFamily: 'BricolageGrotesque_800ExtraBold', color: '#f5f5f5', fontSize: 28, letterSpacing: -0.5, marginBottom: 6 }}>
-                        Join {restaurantName}
+                        Join Group Order
                     </Text>
-                    <Text style={{ fontFamily: 'Manrope_500Medium', color: '#999', fontSize: 15, marginBottom: 32 }}>
-                        Enter your name to join the group order.
+                    <Text style={{ fontFamily: 'Manrope_500Medium', color: '#999', fontSize: 15, marginBottom: 8 }}>
+                        {restaurantName}
                     </Text>
+
+                    {uniqueMembers.length > 0 && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 24 }}>
+                            <Users size={14} color="#FF9933" />
+                            <Text style={{ fontFamily: 'Manrope_500Medium', color: '#FF9933', fontSize: 13 }}>
+                                {uniqueMembers.length} {uniqueMembers.length === 1 ? 'person' : 'people'} already ordering
+                            </Text>
+                        </View>
+                    )}
 
                     <View style={{ backgroundColor: '#1a1a1a', borderRadius: 16, borderWidth: 1, borderColor: '#2a2a2a', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 16, height: 56 }}>
                         <Users size={18} color="#666" />
@@ -300,13 +581,11 @@ export default function JoinPartyScreen() {
                             onChangeText={setGuestName}
                             onSubmitEditing={handleJoin}
                             returnKeyType="go"
+                            autoCapitalize="words"
                         />
                     </View>
 
-                    <Pressable
-                        onPress={handleJoin}
-                        style={{ backgroundColor: '#FF9933', borderRadius: 16, paddingVertical: 16, alignItems: 'center' }}
-                    >
+                    <Pressable onPress={handleJoin} style={{ backgroundColor: '#FF9933', borderRadius: 16, paddingVertical: 16, alignItems: 'center' }}>
                         <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#0f0f0f', fontSize: 17 }}>
                             Start Ordering
                         </Text>
@@ -316,7 +595,7 @@ export default function JoinPartyScreen() {
         );
     }
 
-    // ─── Menu Screen ──────────────────────────────────────────────────────
+    // ─── Menu Screen ─────────────────────────────────────────────────────
     return (
         <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
             <Stack.Screen options={{ headerShown: false }} />
@@ -324,57 +603,141 @@ export default function JoinPartyScreen() {
             {/* Header */}
             <Animated.View entering={FadeIn.duration(400)} style={{
                 paddingTop: Platform.OS === 'ios' ? 56 : 40,
-                paddingBottom: 16,
+                paddingBottom: 12,
                 paddingHorizontal: 20,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
                 backgroundColor: '#0f0f0f',
                 borderBottomWidth: 1,
                 borderBottomColor: '#1e1e1e',
             }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                    <Pressable
-                        onPress={() => goBack()}
-                        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                        <ArrowLeft size={20} color="#f5f5f5" />
-                    </Pressable>
-                    <View>
-                        <Text style={{ fontFamily: 'BricolageGrotesque_800ExtraBold', color: '#f5f5f5', fontSize: 20, letterSpacing: -0.3 }}>
-                            {restaurantName}
-                        </Text>
-                        <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 12 }}>
-                            Ordering as {guestName}
-                        </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }}>
+                        <Pressable onPress={goBack} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center' }}>
+                            <ArrowLeft size={20} color="#f5f5f5" />
+                        </Pressable>
+                        <View style={{ flex: 1 }}>
+                            <Text numberOfLines={1} style={{ fontFamily: 'BricolageGrotesque_800ExtraBold', color: '#f5f5f5', fontSize: 20, letterSpacing: -0.3 }}>
+                                {restaurantName}
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 12 }}>
+                                    {guestName}
+                                </Text>
+                                {isHost && <Crown size={11} color="#FF9933" />}
+                                <Text style={{ fontFamily: 'Manrope_500Medium', color: '#444', fontSize: 12 }}>·</Text>
+                                <Users size={11} color="#666" />
+                                <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 12 }}>
+                                    {uniqueMembers.length || 1}
+                                </Text>
+                            </View>
+                        </View>
                     </View>
+
+                    {isHost && (
+                        <Pressable
+                            onPress={cancelGroupOrder}
+                            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}
+                        >
+                            <Trash2 size={18} color="#EF4444" />
+                        </Pressable>
+                    )}
+                    <Pressable
+                        onPress={() => totalItems > 0 && setShowCartModal(true)}
+                        style={{ position: 'relative', width: 44, height: 44, borderRadius: 22, backgroundColor: totalItems > 0 ? '#FF9933' : '#1a1a1a', borderWidth: 1, borderColor: totalItems > 0 ? '#FF9933' : '#2a2a2a', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                        <ShoppingCart size={20} color={totalItems > 0 ? '#0f0f0f' : '#666'} />
+                        {totalItems > 0 && (
+                            <View style={{ position: 'absolute', top: -4, right: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: '#0f0f0f', alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#FF9933', fontSize: 10 }}>{totalItems}</Text>
+                            </View>
+                        )}
+                    </Pressable>
                 </View>
 
-                {/* Cart button */}
-                <Pressable
-                    onPress={() => totalItems > 0 && setShowCartModal(true)}
-                    style={{ position: 'relative', width: 44, height: 44, borderRadius: 22, backgroundColor: totalItems > 0 ? '#FF9933' : '#1a1a1a', borderWidth: 1, borderColor: totalItems > 0 ? '#FF9933' : '#2a2a2a', alignItems: 'center', justifyContent: 'center' }}
-                >
-                    <ShoppingCart size={20} color={totalItems > 0 ? '#0f0f0f' : '#666'} />
-                    {totalItems > 0 && (
-                        <View style={{ position: 'absolute', top: -4, right: -4, width: 18, height: 18, borderRadius: 9, backgroundColor: '#0f0f0f', alignItems: 'center', justifyContent: 'center' }}>
-                            <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#FF9933', fontSize: 10 }}>{totalItems}</Text>
-                        </View>
+                {/* Search Bar */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#141414', borderRadius: 12, borderWidth: 1, borderColor: '#1e1e1e', paddingHorizontal: 12, marginTop: 12, gap: 8 }}>
+                    <Search size={16} color="#555" />
+                    <TextInput
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        placeholder="Search menu…"
+                        placeholderTextColor="#444"
+                        style={{ flex: 1, fontFamily: 'Manrope_500Medium', color: '#f5f5f5', fontSize: 14, paddingVertical: 10 }}
+                    />
+                    {searchQuery.length > 0 && (
+                        <Pressable onPress={() => setSearchQuery('')}>
+                            <X size={14} color="#666" />
+                        </Pressable>
                     )}
-                </Pressable>
+                </View>
+
+                {/* Category Filter */}
+                {menuCategories.length > 2 && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }} contentContainerStyle={{ gap: 8 }}>
+                        {menuCategories.map(cat => {
+                            const isActive = selectedCategory === cat;
+                            const cfg = cat !== 'all' ? MEAL_PERIOD_CFG[cat as MealPeriod] : null;
+                            return (
+                                <Pressable
+                                    key={cat}
+                                    onPress={() => setSelectedCategory(cat)}
+                                    style={{
+                                        backgroundColor: isActive ? 'rgba(255,153,51,0.2)' : '#141414',
+                                        borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
+                                        borderWidth: 1, borderColor: isActive ? '#FF9933' : '#2a2a2a',
+                                    }}
+                                >
+                                    <Text style={{ fontFamily: 'Manrope_600SemiBold', color: isActive ? '#FF9933' : '#999', fontSize: 12 }}>
+                                        {cat === 'all' ? 'All' : cfg?.label ?? cat}
+                                    </Text>
+                                </Pressable>
+                            );
+                        })}
+                    </ScrollView>
+                )}
             </Animated.View>
 
-            {/* Menu */}
+            {/* Live Members Strip */}
+            {uniqueMembers.length > 0 && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#0f0f0f', borderBottomWidth: 1, borderBottomColor: '#1e1e1e', gap: 8 }}>
+                    <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#666', fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase' }}>Live</Text>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E' }} />
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                        {uniqueMembers.map(name => {
+                            const color = getMemberColor(name, uniqueMembers);
+                            const memberData = memberTotals[name];
+                            return (
+                                <View key={name} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1a1a1a', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#2a2a2a' }}>
+                                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: `${color}20`, borderWidth: 1.5, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+                                        <Text style={{ fontFamily: 'Manrope_600SemiBold', color, fontSize: 9 }}>{name.charAt(0).toUpperCase()}</Text>
+                                    </View>
+                                    <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#ccc', fontSize: 12 }}>{name}</Text>
+                                    <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 11 }}>${memberData?.total.toFixed(2) ?? '0.00'}</Text>
+                                </View>
+                            );
+                        })}
+                    </ScrollView>
+                </View>
+            )}
+
+            {/* Menu List */}
             <FlatList
-                data={menu}
+                data={filteredMenu}
                 keyExtractor={(item) => item.id.toString()}
                 contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+                ListEmptyComponent={
+                    <View style={{ alignItems: 'center', paddingTop: 60 }}>
+                        <Text style={{ fontFamily: 'Manrope_500Medium', color: '#555', fontSize: 14 }}>
+                            {searchQuery ? `No items match "${searchQuery}"` : 'No menu items available'}
+                        </Text>
+                    </View>
+                }
                 renderItem={({ item, index }) => {
                     const isExpanded = expandedItemId === item.id.toString();
                     const mealPeriod = item.meal_period as MealPeriod | undefined;
+                    const itemInCart = cartItems.filter(ci => ci.menu_item_id === item.id || ci.menu_items?.name === item.name);
 
                     return (
-                        <Animated.View entering={FadeInDown.delay(index * 40).duration(400)}>
+                        <Animated.View entering={FadeInDown.delay(Math.min(index * 40, 400)).duration(400)}>
                             <Pressable
                                 onPress={() => {
                                     if (Platform.OS !== 'web') Haptics.selectionAsync();
@@ -384,14 +747,12 @@ export default function JoinPartyScreen() {
                                     backgroundColor: '#1a1a1a',
                                     borderRadius: 20,
                                     borderWidth: 1,
-                                    borderColor: isExpanded ? '#FF9933' : '#2a2a2a',
+                                    borderColor: isExpanded ? '#FF9933' : itemInCart.length > 0 ? 'rgba(255,153,51,0.3)' : '#2a2a2a',
                                     marginBottom: 12,
                                     overflow: 'hidden',
                                 }}
                             >
-                                {/* Main row */}
                                 <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14 }}>
-                                    {/* Image */}
                                     {item.image_url ? (
                                         <Image source={{ uri: item.image_url }} style={{ width: 64, height: 64, borderRadius: 14, backgroundColor: '#262626' }} resizeMode="cover" />
                                     ) : (
@@ -400,13 +761,10 @@ export default function JoinPartyScreen() {
                                         </View>
                                     )}
 
-                                    {/* Info */}
                                     <View style={{ flex: 1 }}>
                                         <Text numberOfLines={1} style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 16, marginBottom: 4 }}>
                                             {item.name}
                                         </Text>
-
-                                        {/* Tags row */}
                                         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
                                             {mealPeriod && <MealPeriodTag period={mealPeriod} />}
                                             {item.is_vegetarian && (
@@ -421,30 +779,26 @@ export default function JoinPartyScreen() {
                                                     <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#EF4444', fontSize: 10 }}>Spicy</Text>
                                                 </View>
                                             )}
+                                            {itemInCart.length > 0 && (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(255,153,51,0.12)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,153,51,0.3)', paddingHorizontal: 8, paddingVertical: 3 }}>
+                                                    <ShoppingCart size={10} color="#FF9933" />
+                                                    <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#FF9933', fontSize: 10 }}>×{itemInCart.length}</Text>
+                                                </View>
+                                            )}
                                         </View>
-
                                         <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#FF9933', fontSize: 15 }}>
                                             ${Number(item.price).toFixed(2)}
                                         </Text>
                                     </View>
 
-                                    {/* Expand chevron */}
                                     {isExpanded ? <ChevronUp size={18} color="#FF9933" /> : <ChevronDown size={18} color="#555" />}
                                 </View>
 
-                                {/* Expanded detail panel */}
                                 {isExpanded && (
                                     <Animated.View entering={FadeInDown.duration(250)} style={{ borderTopWidth: 1, borderTopColor: '#2a2a2a', padding: 16 }}>
                                         {item.description ? (
                                             <Text style={{ fontFamily: 'Manrope_500Medium', color: '#aaa', fontSize: 14, lineHeight: 20, marginBottom: 16 }}>
                                                 {item.description}
-                                            </Text>
-                                        ) : null}
-
-                                        {/* Calories / extra details if present */}
-                                        {item.calories ? (
-                                            <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 13, marginBottom: 12 }}>
-                                                {item.calories} kcal
                                             </Text>
                                         ) : null}
 
@@ -454,7 +808,7 @@ export default function JoinPartyScreen() {
                                         >
                                             <Plus size={18} color="#0f0f0f" />
                                             <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#0f0f0f', fontSize: 15 }}>
-                                                Add to Order
+                                                Add to Order · ${Number(item.price).toFixed(2)}
                                             </Text>
                                         </Pressable>
                                     </Animated.View>
@@ -465,9 +819,9 @@ export default function JoinPartyScreen() {
                 }}
             />
 
-            {/* Floating cart bar */}
+            {/* Floating Cart Bar */}
             {totalItems > 0 && (
-                <View style={{ position: 'absolute', bottom: 32, left: 16, right: 16 }}>
+                <Animated.View entering={FadeInUp.duration(300)} style={{ position: 'absolute', bottom: 32, left: 16, right: 16 }}>
                     <Pressable
                         onPress={() => setShowCartModal(true)}
                         style={{ backgroundColor: '#FF9933', borderRadius: 20, paddingVertical: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', shadowColor: '#FF9933', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 16, elevation: 12 }}
@@ -478,17 +832,38 @@ export default function JoinPartyScreen() {
                         <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#0f0f0f', fontSize: 16 }}>View Group Order</Text>
                         <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#0f0f0f', fontSize: 15 }}>${totalPrice.toFixed(2)}</Text>
                     </Pressable>
-                </View>
+                </Animated.View>
             )}
 
             {/* Cart Modal */}
             <Modal visible={showCartModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowCartModal(false)}>
                 <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
-                    {/* Modal header */}
+                    {/* Modal Header */}
                     <View style={{ paddingTop: 20, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#1e1e1e' }}>
-                        <Text style={{ fontFamily: 'BricolageGrotesque_800ExtraBold', color: '#f5f5f5', fontSize: 22 }}>Group Cart</Text>
+                        <View>
+                            <Text style={{ fontFamily: 'BricolageGrotesque_800ExtraBold', color: '#f5f5f5', fontSize: 22 }}>Group Order</Text>
+                            <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 13, marginTop: 2 }}>
+                                {totalItems} items · {uniqueMembers.length} {uniqueMembers.length === 1 ? 'member' : 'members'}
+                            </Text>
+                        </View>
                         <Pressable onPress={() => setShowCartModal(false)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center' }}>
                             <X size={18} color="#f5f5f5" />
+                        </Pressable>
+                    </View>
+
+                    {/* View Toggle */}
+                    <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 8 }}>
+                        <Pressable
+                            onPress={() => setShowMemberBreakdown(true)}
+                            style={{ flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', backgroundColor: showMemberBreakdown ? 'rgba(255,153,51,0.15)' : '#1a1a1a', borderWidth: 1, borderColor: showMemberBreakdown ? '#FF9933' : '#2a2a2a' }}
+                        >
+                            <Text style={{ fontFamily: 'Manrope_600SemiBold', color: showMemberBreakdown ? '#FF9933' : '#999', fontSize: 13 }}>By Member</Text>
+                        </Pressable>
+                        <Pressable
+                            onPress={() => setShowMemberBreakdown(false)}
+                            style={{ flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', backgroundColor: !showMemberBreakdown ? 'rgba(255,153,51,0.15)' : '#1a1a1a', borderWidth: 1, borderColor: !showMemberBreakdown ? '#FF9933' : '#2a2a2a' }}
+                        >
+                            <Text style={{ fontFamily: 'Manrope_600SemiBold', color: !showMemberBreakdown ? '#FF9933' : '#999', fontSize: 13 }}>All Items</Text>
                         </Pressable>
                     </View>
 
@@ -496,58 +871,139 @@ export default function JoinPartyScreen() {
                         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                             <ShoppingCart size={48} color="#333" />
                             <Text style={{ fontFamily: 'Manrope_500Medium', color: '#555', fontSize: 15, marginTop: 12 }}>No items yet</Text>
+                            <Text style={{ fontFamily: 'Manrope_500Medium', color: '#444', fontSize: 13, marginTop: 4 }}>Add items from the menu to get started</Text>
                         </View>
+                    ) : showMemberBreakdown ? (
+                        /* By Member View */
+                        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
+                            {Object.entries(memberTotals).map(([name, data]) => {
+                                const color = getMemberColor(name, uniqueMembers);
+                                const canRemove = isHost || name === guestName;
+                                return (
+                                    <View key={name} style={{ marginBottom: 16 }}>
+                                        {/* Member Header */}
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: `${color}20`, borderWidth: 2, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color, fontSize: 12 }}>{name.charAt(0).toUpperCase()}</Text>
+                                                </View>
+                                                <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 15 }}>{name}</Text>
+                                                {name === guestName && isHost && <Crown size={12} color="#FF9933" />}
+                                            </View>
+                                            <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color, fontSize: 15 }}>${data.total.toFixed(2)}</Text>
+                                        </View>
+
+                                        {/* Items */}
+                                        {data.items.map(item => (
+                                            <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1a1a1a', borderRadius: 14, borderWidth: 1, borderColor: '#2a2a2a', padding: 12, marginBottom: 6 }}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 14 }} numberOfLines={1}>
+                                                        {item.menu_items?.name ?? 'Item'}
+                                                    </Text>
+                                                    <Text style={{ fontFamily: 'Manrope_500Medium', color: '#FF9933', fontSize: 13, marginTop: 2 }}>
+                                                        ${Number(item.menu_items?.price ?? 0).toFixed(2)}
+                                                    </Text>
+                                                </View>
+                                                {canRemove && !submitted && (
+                                                    <Pressable onPress={() => removeFromCart(item.id)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', alignItems: 'center', justifyContent: 'center', marginLeft: 10 }}>
+                                                        <Trash2 size={14} color="#EF4444" />
+                                                    </Pressable>
+                                                )}
+                                            </View>
+                                        ))}
+                                    </View>
+                                );
+                            })}
+                        </ScrollView>
                     ) : (
+                        /* All Items View */
                         <FlatList
                             data={cartItems}
                             keyExtractor={(item, i) => item.id?.toString() ?? i.toString()}
                             contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
-                            renderItem={({ item }) => (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1a1a1a', borderRadius: 16, borderWidth: 1, borderColor: '#2a2a2a', padding: 14, marginBottom: 10 }}>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 15 }}>
-                                            {item.menu_items?.name ?? 'Item'}
+                            renderItem={({ item }) => {
+                                const memberColor = getMemberColor(item.added_by_name || '', uniqueMembers);
+                                const canRemove = isHost || item.added_by_name === guestName;
+                                return (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 16, borderWidth: 1, borderColor: '#2a2a2a', padding: 14, marginBottom: 10 }}>
+                                        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: `${memberColor}20`, borderWidth: 1.5, borderColor: memberColor, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                                            <Text style={{ fontFamily: 'Manrope_600SemiBold', color: memberColor, fontSize: 10 }}>{(item.added_by_name || '?').charAt(0).toUpperCase()}</Text>
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 15 }} numberOfLines={1}>
+                                                {item.menu_items?.name ?? 'Item'}
+                                            </Text>
+                                            <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 12, marginTop: 2 }}>
+                                                {item.added_by_name}
+                                            </Text>
+                                        </View>
+                                        <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#FF9933', fontSize: 15, marginRight: canRemove ? 8 : 0 }}>
+                                            ${Number(item.menu_items?.price ?? 0).toFixed(2)}
                                         </Text>
-                                        <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 12, marginTop: 2 }}>
-                                            Added by {item.added_by_name}
-                                        </Text>
+                                        {canRemove && !submitted && (
+                                            <Pressable onPress={() => removeFromCart(item.id)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Trash2 size={14} color="#EF4444" />
+                                            </Pressable>
+                                        )}
                                     </View>
-                                    <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#FF9933', fontSize: 15 }}>
-                                        ${Number(item.menu_items?.price ?? 0).toFixed(2)}
-                                    </Text>
-                                </View>
-                            )}
+                                );
+                            }}
                         />
                     )}
 
                     {/* Footer */}
                     <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: '#1e1e1e', paddingBottom: Platform.OS === 'ios' ? 40 : 20 }}>
-                        {/* Total row */}
+                        {/* Per-member summary */}
+                        {uniqueMembers.length > 1 && (
+                            <View style={{ marginBottom: 12 }}>
+                                {Object.entries(memberTotals).map(([name, data]) => {
+                                    const color = getMemberColor(name, uniqueMembers);
+                                    return (
+                                        <View key={name} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
+                                                <Text style={{ fontFamily: 'Manrope_500Medium', color: '#999', fontSize: 13 }}>{name}</Text>
+                                            </View>
+                                            <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#ccc', fontSize: 13 }}>${data.total.toFixed(2)}</Text>
+                                        </View>
+                                    );
+                                })}
+                                <View style={{ height: 1, backgroundColor: '#1e1e1e', marginVertical: 8 }} />
+                            </View>
+                        )}
+
+                        {/* Total */}
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                            <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#999', fontSize: 14 }}>Total</Text>
-                            <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 18 }}>${totalPrice.toFixed(2)}</Text>
+                            <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#999', fontSize: 14 }}>Group Total</Text>
+                            <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 20 }}>${totalPrice.toFixed(2)}</Text>
                         </View>
 
                         {isHost ? (
                             <Pressable
                                 onPress={submitOrderToKitchen}
                                 disabled={submitting || cartItems.length === 0}
-                                style={{ backgroundColor: '#22C55E', borderRadius: 16, paddingVertical: 16, alignItems: 'center', opacity: submitting || cartItems.length === 0 ? 0.6 : 1 }}
+                                style={{ backgroundColor: '#22C55E', borderRadius: 16, paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: submitting || cartItems.length === 0 ? 0.6 : 1 }}
                             >
                                 {submitting ? (
                                     <ActivityIndicator color="#fff" />
                                 ) : (
-                                    <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#fff', fontSize: 17 }}>
-                                        Submit to Kitchen
-                                    </Text>
+                                    <>
+                                        <Send size={18} color="#fff" />
+                                        <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#fff', fontSize: 17 }}>
+                                            Submit to Kitchen
+                                        </Text>
+                                    </>
                                 )}
                             </Pressable>
                         ) : (
                             <View style={{ backgroundColor: '#1a1a1a', borderRadius: 16, borderWidth: 1, borderColor: '#2a2a2a', paddingVertical: 16, alignItems: 'center' }}>
-                                <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#FF9933', fontSize: 16 }}>
-                                    Waiting for host to submit…
-                                </Text>
-                                <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 12, marginTop: 4 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                    <Crown size={16} color="#FF9933" />
+                                    <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#FF9933', fontSize: 16 }}>
+                                        Waiting for host to submit
+                                    </Text>
+                                </View>
+                                <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 12 }}>
                                     Keep adding items while you wait
                                 </Text>
                             </View>

@@ -10,8 +10,8 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-import { Search, Bell, MapPin, TrendingUp, Zap, User, Map } from "lucide-react-native";
+import { useRouter, useFocusEffect } from "expo-router";
+import { Search, Bell, MapPin, TrendingUp, Zap, User, Map, UtensilsCrossed, ChevronRight, Users, Crown, X } from "lucide-react-native";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -21,6 +21,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HeroCard } from "@/components/HeroCard";
 import { RestaurantListCard } from "@/components/RestaurantListCard";
 import { FilterBar } from "@/components/FilterBar";
@@ -36,17 +37,29 @@ import {
 } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
 import { useAdminMode } from "@/hooks/useAdminMode";
+import { useAuth } from "@/lib/auth-context";
 import { useNotifications } from "@/lib/notifications-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+interface ActiveGroupOrder {
+  sessionId: string;
+  restaurantName: string;
+  isHost: boolean;
+  joinedAt: string;
+  itemCount?: number;
+  memberCount?: number;
+}
 
 export default function DiscoveryFeed() {
   const router = useRouter();
   const { userCoords, locationLabel } = useLocation();
   const { isAdmin } = useAdminMode();
+  const { session } = useAuth();
   const { unreadCount } = useNotifications();
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [showSearch, setShowSearch] = useState(false);
+  const [activeGroupOrder, setActiveGroupOrder] = useState<ActiveGroupOrder | null>(null);
 
   // ==================================================
   // STATE MANAGEMENT - Replace Mock Data
@@ -112,6 +125,99 @@ export default function DiscoveryFeed() {
     }
   }
 
+  const currentUserId = session?.user?.id;
+  const activeOrderKey = currentUserId
+    ? `rasvia:active_group_order:${currentUserId}`
+    : null;
+
+  const discardGroupOrder = useCallback(async (sessId: string) => {
+    Alert.alert(
+      "Cancel Group Order",
+      "This will discard the entire group order and remove all items. This cannot be undone.",
+      [
+        { text: "Keep Order", style: "cancel" },
+        {
+          text: "Cancel Order",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await supabase.from("party_items").delete().eq("session_id", sessId);
+              await supabase.from("party_sessions").update({ status: "cancelled" }).eq("id", sessId);
+              if (activeOrderKey) await AsyncStorage.removeItem(activeOrderKey);
+              setActiveGroupOrder(null);
+              if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            } catch {
+              Alert.alert("Error", "Could not cancel the order. Try again.");
+            }
+          },
+        },
+      ]
+    );
+  }, [activeOrderKey]);
+
+  // Check for active group orders — user-scoped key, lightweight
+  const checkActiveGroupOrder = useCallback(async () => {
+    if (!currentUserId || !activeOrderKey) {
+      setActiveGroupOrder(null);
+      return;
+    }
+    try {
+      // Check user-scoped AsyncStorage first (fast, local)
+      const stored = await AsyncStorage.getItem(activeOrderKey);
+      if (stored) {
+        const parsed = JSON.parse(stored) as ActiveGroupOrder;
+        const { data: sess, error } = await supabase
+          .from('party_sessions')
+          .select('id, status, restaurants(name)')
+          .eq('id', parsed.sessionId)
+          .single();
+
+        if (!error && sess && sess.status === 'open') {
+          setActiveGroupOrder({
+            ...parsed,
+            restaurantName: (sess.restaurants as any)?.name ?? parsed.restaurantName,
+          });
+          return;
+        }
+        // Not open anymore — clean up
+        await AsyncStorage.removeItem(activeOrderKey);
+      }
+
+      // Fallback: check if the user hosts any open sessions
+      const { data: hostSessions } = await supabase
+        .from('party_sessions')
+        .select('id, restaurants(name)')
+        .eq('host_user_id', currentUserId)
+        .eq('status', 'open')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (hostSessions && hostSessions.length > 0) {
+        const sess = hostSessions[0];
+        const order: ActiveGroupOrder = {
+          sessionId: sess.id,
+          restaurantName: (sess.restaurants as any)?.name ?? 'Restaurant',
+          isHost: true,
+          joinedAt: new Date().toISOString(),
+        };
+        // Re-persist so the banner works immediately next time
+        await AsyncStorage.setItem(activeOrderKey, JSON.stringify(order));
+        setActiveGroupOrder(order);
+        return;
+      }
+
+      setActiveGroupOrder(null);
+    } catch {
+      setActiveGroupOrder(null);
+    }
+  }, [currentUserId, activeOrderKey]);
+
+  useFocusEffect(
+    useCallback(() => {
+      checkActiveGroupOrder();
+    }, [checkActiveGroupOrder])
+  );
+
   // Recalculate distances when userCoords arrives after initial fetch
   useEffect(() => {
     if (!userCoords) return;
@@ -164,8 +270,34 @@ export default function DiscoveryFeed() {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    router.push("/host_party" as any);
-  }, [router]);
+    if (activeGroupOrder) {
+      Alert.alert(
+        "Active Group Order",
+        `You have an in-progress group order at ${activeGroupOrder.restaurantName}.`,
+        [
+          { text: "Go to Order", onPress: () => router.push(`/join/${activeGroupOrder.sessionId}` as any) },
+          {
+            text: "Cancel & Start New",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await supabase.from("party_items").delete().eq("session_id", activeGroupOrder.sessionId);
+                await supabase.from("party_sessions").update({ status: "cancelled" }).eq("id", activeGroupOrder.sessionId);
+                if (activeOrderKey) await AsyncStorage.removeItem(activeOrderKey);
+                setActiveGroupOrder(null);
+                router.push("/host_party" as any);
+              } catch {
+                Alert.alert("Error", "Could not cancel the existing order.");
+              }
+            },
+          },
+          { text: "Dismiss", style: "cancel" },
+        ]
+      );
+    } else {
+      router.push("/host_party" as any);
+    }
+  }, [router, activeGroupOrder]);
 
   const handleFilterChange = useCallback((filter: FilterType) => {
     if (Platform.OS !== "web") {
@@ -331,6 +463,66 @@ export default function DiscoveryFeed() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 100 }}
         >
+          {/* Active Group Order Banner */}
+          {activeGroupOrder && (
+            <Animated.View entering={FadeInDown.duration(400)} style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+              <View style={{
+                backgroundColor: "rgba(255,153,51,0.1)",
+                borderRadius: 20,
+                borderWidth: 1.5,
+                borderColor: "rgba(255,153,51,0.3)",
+                padding: 16,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 14,
+              }}>
+                <Pressable
+                  onPress={() => {
+                    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    router.push(`/join/${activeGroupOrder.sessionId}` as any);
+                  }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 14, flex: 1 }}
+                >
+                  <View style={{
+                    width: 48, height: 48, borderRadius: 24,
+                    backgroundColor: "rgba(255,153,51,0.2)",
+                    borderWidth: 2, borderColor: "#FF9933",
+                    alignItems: "center", justifyContent: "center",
+                  }}>
+                    <UtensilsCrossed size={22} color="#FF9933" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#22C55E" }} />
+                      <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#22C55E", fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase" }}>
+                        In Progress
+                      </Text>
+                      {activeGroupOrder.isHost && <Crown size={11} color="#FF9933" />}
+                    </View>
+                    <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 16, letterSpacing: -0.2 }} numberOfLines={1}>
+                      Group Order at {activeGroupOrder.restaurantName}
+                    </Text>
+                  </View>
+                  <ChevronRight size={20} color="#FF9933" />
+                </Pressable>
+                {activeGroupOrder.isHost && (
+                  <Pressable
+                    onPress={() => discardGroupOrder(activeGroupOrder.sessionId)}
+                    hitSlop={8}
+                    style={{
+                      width: 32, height: 32, borderRadius: 16,
+                      backgroundColor: "rgba(239,68,68,0.12)",
+                      borderWidth: 1, borderColor: "rgba(239,68,68,0.3)",
+                      alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    <X size={16} color="#EF4444" />
+                  </Pressable>
+                )}
+              </View>
+            </Animated.View>
+          )}
+
           {/* Trending Section */}
           <View style={{ height: 10 }} />
           <Animated.View entering={FadeInDown.delay(100).duration(500)}>

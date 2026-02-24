@@ -152,6 +152,11 @@ const EVENT_CONFIG: Record<
     color: "#FF9933",
     icon: Users,
   },
+  group_item_added: {
+    label: (r) => `New item added to group order at ${r}`,
+    color: "#3B82F6",
+    icon: ShoppingCart,
+  },
   group_submitted: {
     label: (r) => `Group order submitted at ${r}`,
     color: "#22C55E",

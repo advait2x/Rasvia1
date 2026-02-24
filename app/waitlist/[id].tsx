@@ -45,6 +45,8 @@ import {
 } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
 import { useAuth } from "@/lib/auth-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Linking from "expo-linking";
 import type { MenuItem } from "@/data/mockData";
 
 export default function WaitlistStatus() {
@@ -53,6 +55,11 @@ export default function WaitlistStatus() {
   const { userCoords } = useLocation();
   const { session } = useAuth();
   const { addEvent, dismissEntry } = useNotifications();
+
+  const currentUserId = session?.user?.id;
+  const activeOrderKey = currentUserId
+    ? `rasvia:active_group_order:${currentUserId}`
+    : null;
 
   // ==========================================
   // SUPABASE STATE
@@ -345,41 +352,119 @@ export default function WaitlistStatus() {
       const userId = session?.user?.id;
       if (!userId) throw new Error("You must be logged in to hold a party");
 
-      // Check if we already created a session for this waitlist
-      let sessionId;
-      const { data: existing } = await supabase
+      // Check for ANY open session by this user (not just this restaurant)
+      const { data: anyOpen } = await supabase
         .from('party_sessions')
-        .select('id')
+        .select('id, restaurants(name)')
         .eq('host_user_id', userId)
-        .eq('restaurant_id', Number(id))
         .eq('status', 'open')
-        .single();
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-      if (existing) {
-        sessionId = existing.id;
-      } else {
-        // Create a new session in Supabase
-        const { data: newSession, error } = await supabase
+      if (anyOpen && anyOpen.length > 0) {
+        const existing = anyOpen[0];
+        const existingRestName = (existing.restaurants as any)?.name ?? 'another restaurant';
+        // If it's the same restaurant, just use that session
+        // If different restaurant, warn the user
+        const existingForThisRestaurant = anyOpen.find(
+          (s: any) => true // we already filtered by host_user_id
+        );
+
+        // Check if it's for this specific restaurant
+        const { data: sameRest } = await supabase
           .from('party_sessions')
-          .insert({
-            restaurant_id: Number(id),
-            host_user_id: userId,
-            status: 'open'
-          })
-          .select()
+          .select('id')
+          .eq('host_user_id', userId)
+          .eq('restaurant_id', Number(id))
+          .eq('status', 'open')
           .single();
 
-        if (error) throw error;
-        sessionId = newSession.id;
+        if (sameRest) {
+          // Reuse existing session for this restaurant
+          const sessionId = sameRest.id;
+          const shareUrl = Linking.createURL(`/join/${sessionId}`);
+          await Share.share({
+            title: 'Join my Group Order',
+            message: `I'm holding the table at ${restaurant?.name}! Add your food here: ${shareUrl}`,
+            url: shareUrl,
+          });
+
+          // Store as active (user-scoped)
+          if (activeOrderKey) await AsyncStorage.setItem(activeOrderKey, JSON.stringify({
+            sessionId,
+            restaurantName: restaurant?.name ?? 'Restaurant',
+            isHost: true,
+            joinedAt: new Date().toISOString(),
+          }));
+
+          setCreatingParty(false);
+          return;
+        }
+
+        // Different restaurant — offer to cancel existing
+        Alert.alert(
+          "Active Order Exists",
+          `You have an open group order at ${existingRestName}. Cancel it to start a new one here.`,
+          [
+            { text: "Go to Order", onPress: () => router.push(`/join/${existing.id}` as any) },
+            {
+              text: "Cancel & Start New",
+              style: "destructive",
+              onPress: async () => {
+                try {
+                  await supabase.from('party_items').delete().eq('session_id', existing.id);
+                  await supabase.from('party_sessions').update({ status: 'cancelled' }).eq('id', existing.id);
+                  if (activeOrderKey) await AsyncStorage.removeItem(activeOrderKey);
+                  if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                  handleStartGroupOrder();
+                } catch {
+                  Alert.alert("Error", "Could not cancel the existing order.");
+                }
+              },
+            },
+            { text: "Dismiss", style: "cancel" },
+          ]
+        );
+        setCreatingParty(false);
+        return;
       }
 
-      // Generate Link pointing to the Web Bridge
-      const shareUrl = `http://192.168.1.96:5173/join?id=${sessionId}`;
+      // No existing session - create new one
+      const { data: newSession, error } = await supabase
+        .from('party_sessions')
+        .insert({
+          restaurant_id: Number(id),
+          host_user_id: userId,
+          status: 'open'
+        })
+        .select()
+        .single();
 
-      // Open Native Share Sheet
+      if (error) throw error;
+
+      const shareUrl = Linking.createURL(`/join/${newSession.id}`);
+
+      if (activeOrderKey) {
+        await AsyncStorage.setItem(activeOrderKey, JSON.stringify({
+          sessionId: newSession.id,
+          restaurantName: restaurant?.name ?? 'Restaurant',
+          isHost: true,
+          joinedAt: new Date().toISOString(),
+        }));
+      }
+
+      addEvent({
+        type: "group_created",
+        restaurantName: restaurant?.name ?? "Restaurant",
+        restaurantId: String(id),
+        entryId: newSession.id,
+        partySize: myPartySize,
+        timestamp: new Date().toISOString(),
+      });
+
       await Share.share({
         title: 'Join my Group Order',
-        message: `I'm holding the table at ${restaurant?.name}! Add your food to the cart here: ${shareUrl}`,
+        message: `I'm holding the table at ${restaurant?.name}! Add your food here: ${shareUrl}`,
         url: shareUrl,
       });
 

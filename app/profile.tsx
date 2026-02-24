@@ -366,8 +366,11 @@ export default function ProfileSettingsScreen() {
         onPress: async () => {
           setLoggingOut(true);
           try {
+            // Don't remove the user-scoped active group order key —
+            // it lets the user recover their group order after re-login.
             const { error } = await supabase.auth.signOut();
             if (error) throw error;
+            router.replace("/auth");
           } catch (error: any) {
             Alert.alert("Error", error.message || "Failed to log out.");
           } finally {

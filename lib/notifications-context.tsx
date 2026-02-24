@@ -30,6 +30,7 @@ export type NotificationEventType =
   | "removed"
   | "group_created"
   | "group_joined"
+  | "group_item_added"
   | "group_submitted";
 
 export interface NotificationEvent {

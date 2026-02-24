@@ -26,9 +26,12 @@ import {
   Search,
   Clock,
   MapPin,
+  AlertCircle,
+  Crown,
 } from "lucide-react-native";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { useNotifications } from "../lib/notifications-context";
@@ -56,6 +59,11 @@ export default function HostPartyScreen() {
   const { addEvent } = useNotifications();
   const { userCoords } = useLocation();
 
+  const currentUserId = session?.user?.id;
+  const activeOrderKey = currentUserId
+    ? `rasvia:active_group_order:${currentUserId}`
+    : null;
+
   const [step, setStep] = useState<Step>("select");
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loadingRestaurants, setLoadingRestaurants] = useState(true);
@@ -66,10 +74,68 @@ export default function HostPartyScreen() {
   const [copied, setCopied] = useState(false);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("none");
+  const [existingSession, setExistingSession] = useState<{
+    id: string;
+    restaurantName: string;
+  } | null>(null);
+  const [checkingExisting, setCheckingExisting] = useState(true);
 
   useEffect(() => {
+    checkExistingSession();
     fetchRestaurants();
   }, []);
+
+  const checkExistingSession = async () => {
+    setCheckingExisting(true);
+    try {
+      if (!session?.user?.id) {
+        setCheckingExisting(false);
+        return;
+      }
+
+      // Check for host's own open sessions
+      const { data: hostSessions } = await supabase
+        .from("party_sessions")
+        .select("id, status, restaurants(name)")
+        .eq("host_user_id", session.user.id)
+        .eq("status", "open")
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (hostSessions && hostSessions.length > 0) {
+        const sess = hostSessions[0];
+        setExistingSession({
+          id: sess.id,
+          restaurantName: (sess.restaurants as any)?.name ?? "Restaurant",
+        });
+        setCheckingExisting(false);
+        return;
+      }
+
+      // Check AsyncStorage for guest participation (user-scoped)
+      const stored = activeOrderKey ? await AsyncStorage.getItem(activeOrderKey) : null;
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const { data: sess } = await supabase
+          .from("party_sessions")
+          .select("id, status, restaurants(name)")
+          .eq("id", parsed.sessionId)
+          .single();
+
+        if (sess && sess.status === "open") {
+          setExistingSession({
+            id: sess.id,
+            restaurantName:
+              (sess.restaurants as any)?.name ?? parsed.restaurantName,
+          });
+        }
+      }
+    } catch {
+      // Silently ignore
+    } finally {
+      setCheckingExisting(false);
+    }
+  };
 
   const fetchRestaurants = async () => {
     setLoadingRestaurants(true);
@@ -145,6 +211,38 @@ export default function HostPartyScreen() {
       Alert.alert("Error", "You must be logged in to host a party.");
       return;
     }
+
+    if (existingSession) {
+      Alert.alert(
+        "Active Order Exists",
+        `You already have an open group order at ${existingSession.restaurantName}. Cancel it to start a new one.`,
+        [
+          {
+            text: "Go to Order",
+            onPress: () =>
+              router.push(`/join/${existingSession.id}` as any),
+          },
+          {
+            text: "Cancel & Start New",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await supabase.from("party_items").delete().eq("session_id", existingSession.id);
+                await supabase.from("party_sessions").update({ status: "cancelled" }).eq("id", existingSession.id);
+                if (activeOrderKey) await AsyncStorage.removeItem(activeOrderKey);
+                setExistingSession(null);
+                if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              } catch {
+                Alert.alert("Error", "Could not cancel the existing order.");
+              }
+            },
+          },
+          { text: "Dismiss", style: "cancel" },
+        ],
+      );
+      return;
+    }
+
     if (Platform.OS !== "web")
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setStep("starting");
@@ -166,6 +264,19 @@ export default function HostPartyScreen() {
       setSessionId(data.id);
       setShareUrl(url);
       setStep("created");
+
+      if (activeOrderKey) {
+        await AsyncStorage.setItem(
+          activeOrderKey,
+          JSON.stringify({
+            sessionId: data.id,
+            restaurantName: selectedRestaurant.name,
+            isHost: true,
+            joinedAt: new Date().toISOString(),
+          }),
+        );
+      }
+
       addEvent({
         type: "group_created",
         restaurantName: selectedRestaurant!.name,
@@ -278,6 +389,84 @@ export default function HostPartyScreen() {
           </View>
           <UtensilsCrossed size={22} color="#FF9933" />
         </View>
+
+        {/* ── Existing Session Banner ── */}
+        {existingSession && step === "select" && (
+          <Animated.View entering={FadeInDown.duration(400)} style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+            <View style={{
+              backgroundColor: "rgba(255,153,51,0.1)",
+              borderRadius: 16,
+              borderWidth: 1.5,
+              borderColor: "rgba(255,153,51,0.3)",
+              padding: 16,
+            }}>
+              <Pressable
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  router.push(`/join/${existingSession.id}` as any);
+                }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+              >
+                <View style={{
+                  width: 40, height: 40, borderRadius: 20,
+                  backgroundColor: "rgba(255,153,51,0.2)",
+                  borderWidth: 2, borderColor: "#FF9933",
+                  alignItems: "center", justifyContent: "center",
+                }}>
+                  <AlertCircle size={20} color="#FF9933" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#FF9933", fontSize: 14, marginBottom: 2 }}>
+                    Active Group Order
+                  </Text>
+                  <Text style={{ fontFamily: "Manrope_500Medium", color: "#aaa", fontSize: 13 }}>
+                    You have an open order at {existingSession.restaurantName}
+                  </Text>
+                </View>
+                <ChevronRight size={18} color="#FF9933" />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  Alert.alert(
+                    "Cancel Existing Order",
+                    `This will discard your group order at ${existingSession.restaurantName} and all its items so you can start a new one.`,
+                    [
+                      { text: "Keep Order", style: "cancel" },
+                      {
+                        text: "Cancel Order",
+                        style: "destructive",
+                        onPress: async () => {
+                          try {
+                            await supabase.from("party_items").delete().eq("session_id", existingSession.id);
+                            await supabase.from("party_sessions").update({ status: "cancelled" }).eq("id", existingSession.id);
+                            if (activeOrderKey) await AsyncStorage.removeItem(activeOrderKey);
+                            setExistingSession(null);
+                            if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                          } catch {
+                            Alert.alert("Error", "Could not cancel the order. Try again.");
+                          }
+                        },
+                      },
+                    ]
+                  );
+                }}
+                style={{
+                  marginTop: 12,
+                  paddingVertical: 10,
+                  borderRadius: 12,
+                  backgroundColor: "rgba(239,68,68,0.08)",
+                  borderWidth: 1,
+                  borderColor: "rgba(239,68,68,0.25)",
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#EF4444", fontSize: 13 }}>
+                  Cancel Existing & Start New
+                </Text>
+              </Pressable>
+            </View>
+          </Animated.View>
+        )}
 
         {/* ── STEP: SELECT ── */}
         {step === "select" && (
