@@ -308,7 +308,7 @@ function EditableMenuItem({
       )}
 
       <Modal visible={editModalVisible} transparent animationType="fade">
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={{
             flex: 1, backgroundColor: "rgba(0,0,0,0.7)",
@@ -424,6 +424,7 @@ export function MenuEditor({ menu, setMenu, onItemPress, onQuickAdd, restaurantI
         isPopular: false,
         isVegetarian: false,
         spiceLevel: 0,
+        mealTimes: [],
       };
 
       setMenu([...menu, newItem]);
@@ -501,7 +502,7 @@ export function MenuEditor({ menu, setMenu, onItemPress, onQuickAdd, restaurantI
 
       {/* Add Item Modal */}
       <Modal visible={showAddItem} transparent animationType="slide">
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={{
             flex: 1, backgroundColor: "rgba(0,0,0,0.7)",

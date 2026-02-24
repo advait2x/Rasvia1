@@ -23,6 +23,7 @@ interface GroupCartDrawerProps {
   onClose: () => void;
   onUpdateQuantity: (itemId: string, delta: number) => void;
   onShare: () => void;
+  isGroupMode?: boolean;
 }
 
 export function GroupCartDrawer({
@@ -31,6 +32,7 @@ export function GroupCartDrawer({
   onClose,
   onUpdateQuantity,
   onShare,
+  isGroupMode = false,
 }: GroupCartDrawerProps) {
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
@@ -64,7 +66,7 @@ export function GroupCartDrawer({
               fontSize: 22,
             }}
           >
-            Group Cart
+            {isGroupMode ? "Group Cart" : "Your Cart"}
           </Text>
           <Text
             style={{
@@ -74,24 +76,28 @@ export function GroupCartDrawer({
               marginTop: 2,
             }}
           >
-            {items.length} items · {members.length} members
+            {isGroupMode
+              ? `${items.length} items · ${members.length} members`
+              : `${items.length} item${items.length !== 1 ? "s" : ""}`}
           </Text>
         </View>
         <View className="flex-row items-center">
-          <Pressable
-            onPress={onShare}
-            className="mr-3"
-            style={{
-              backgroundColor: "#2a2a2a",
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Share2 size={18} color="#FF9933" />
-          </Pressable>
+          {isGroupMode && (
+            <Pressable
+              onPress={onShare}
+              className="mr-3"
+              style={{
+                backgroundColor: "#2a2a2a",
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Share2 size={18} color="#FF9933" />
+            </Pressable>
+          )}
           <Pressable
             onPress={onClose}
             style={{
@@ -108,44 +114,46 @@ export function GroupCartDrawer({
         </View>
       </View>
 
-      {/* Member Avatars */}
-      <View className="px-5 pb-4">
-        <View className="flex-row items-center">
-          {members.map((member, index) => (
-            <Animated.View
-              key={member.id}
-              entering={FadeInLeft.delay(index * 80).duration(400)}
-              style={{ marginRight: -8, zIndex: members.length - index }}
+      {/* Member Avatars — only shown in group mode */}
+      {isGroupMode && (
+        <View className="px-5 pb-4">
+          <View className="flex-row items-center">
+            {members.map((member, index) => (
+              <Animated.View
+                key={member.id}
+                entering={FadeInLeft.delay(index * 80).duration(400)}
+                style={{ marginRight: -8, zIndex: members.length - index }}
+              >
+                <Image
+                  source={{ uri: member.avatar }}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    borderWidth: 2,
+                    borderColor: member.color,
+                  }}
+                />
+              </Animated.View>
+            ))}
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: "#2a2a2a",
+                borderWidth: 2,
+                borderColor: "#333333",
+                alignItems: "center",
+                justifyContent: "center",
+                marginLeft: 0,
+              }}
             >
-              <Image
-                source={{ uri: member.avatar }}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  borderWidth: 2,
-                  borderColor: member.color,
-                }}
-              />
-            </Animated.View>
-          ))}
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              backgroundColor: "#2a2a2a",
-              borderWidth: 2,
-              borderColor: "#333333",
-              alignItems: "center",
-              justifyContent: "center",
-              marginLeft: 0,
-            }}
-          >
-            <Users size={14} color="#999999" />
+              <Users size={14} color="#999999" />
+            </View>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Items */}
       <ScrollView
@@ -269,7 +277,7 @@ export function GroupCartDrawer({
               fontSize: 17,
             }}
           >
-            Place Group Order
+            {isGroupMode ? "Place Group Order" : "Checkout"}
           </Text>
         </Pressable>
       </View>

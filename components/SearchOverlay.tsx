@@ -524,14 +524,17 @@ function SearchResultCard({
                 in queue
               </Text>
             </View>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Clock size={12} color="#FF9933" />
-              <WaitBadge
-                waitTime={restaurant.waitTime}
-                status={restaurant.waitStatus}
-                size="sm"
-              />
-            </View>
+            {/* Hide wait time when restaurant is marked closed */}
+            {restaurant.waitStatus !== "darkgrey" && (
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Clock size={12} color="#FF9933" />
+                <WaitBadge
+                  waitTime={restaurant.waitTime}
+                  status={restaurant.waitStatus}
+                  size="sm"
+                />
+              </View>
+            )}
           </View>
         </View>
 

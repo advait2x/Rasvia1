@@ -125,6 +125,7 @@ export default function WaitlistStatus() {
                 isPopular: mapped.isPopular,
                 isVegetarian: mapped.isVegetarian,
                 spiceLevel: mapped.spiceLevel,
+                mealTimes: mapped.mealTimes,
               };
             }
           );

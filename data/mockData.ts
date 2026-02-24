@@ -28,6 +28,7 @@ export interface MenuItem {
   isPopular: boolean;
   isVegetarian: boolean;
   spiceLevel: number;
+  mealTimes: string[];
 }
 
 export interface CartItem extends MenuItem {
@@ -176,6 +177,7 @@ export const menuItems: MenuItem[] = [
     isPopular: true,
     isVegetarian: false,
     spiceLevel: 2,
+    mealTimes: ["special", "dinner"],
   },
   {
     id: "m2",
@@ -187,6 +189,7 @@ export const menuItems: MenuItem[] = [
     isPopular: true,
     isVegetarian: false,
     spiceLevel: 3,
+    mealTimes: ["lunch", "dinner"],
   },
   {
     id: "m3",
@@ -198,6 +201,7 @@ export const menuItems: MenuItem[] = [
     isPopular: true,
     isVegetarian: true,
     spiceLevel: 2,
+    mealTimes: ["special"],
   },
   {
     id: "m4",
@@ -209,6 +213,7 @@ export const menuItems: MenuItem[] = [
     isPopular: false,
     isVegetarian: true,
     spiceLevel: 0,
+    mealTimes: ["lunch", "dinner"],
   },
   {
     id: "m5",
@@ -220,6 +225,7 @@ export const menuItems: MenuItem[] = [
     isPopular: true,
     isVegetarian: true,
     spiceLevel: 2,
+    mealTimes: ["lunch"],
   },
   {
     id: "m6",
@@ -231,6 +237,7 @@ export const menuItems: MenuItem[] = [
     isPopular: false,
     isVegetarian: false,
     spiceLevel: 3,
+    mealTimes: ["special", "dinner"],
   },
   {
     id: "m7",
@@ -242,6 +249,7 @@ export const menuItems: MenuItem[] = [
     isPopular: true,
     isVegetarian: true,
     spiceLevel: 0,
+    mealTimes: ["breakfast", "lunch"],
   },
   {
     id: "m8",
@@ -253,6 +261,7 @@ export const menuItems: MenuItem[] = [
     isPopular: false,
     isVegetarian: true,
     spiceLevel: 0,
+    mealTimes: ["special"],
   },
   {
     id: "m9",
@@ -264,6 +273,7 @@ export const menuItems: MenuItem[] = [
     isPopular: true,
     isVegetarian: false,
     spiceLevel: 2,
+    mealTimes: ["dinner"],
   },
   {
     id: "m10",
@@ -275,6 +285,7 @@ export const menuItems: MenuItem[] = [
     isPopular: true,
     isVegetarian: true,
     spiceLevel: 1,
+    mealTimes: ["lunch", "special"],
   },
 ];
 

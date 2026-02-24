@@ -175,6 +175,7 @@ export interface SupabaseMenuItem {
     id: number;
     restaurant_id: number;
     category_id: number | null;
+    category: string | null;         // plain text category name (e.g. "Mains", "Starters")
     name: string;
     description: string | null;
     price: number;
@@ -182,6 +183,7 @@ export interface SupabaseMenuItem {
     is_available: boolean;
     is_vegetarian: boolean;
     is_spicy: boolean;
+    meal_times?: string[] | null;    // e.g. ["breakfast", "lunch", "dinner", "special"]
 }
 
 /**
@@ -197,6 +199,7 @@ export interface UIMenuItem {
     isPopular: boolean;
     isVegetarian: boolean;
     spiceLevel: number;
+    mealTimes: string[];            // e.g. ["breakfast", "lunch"]
 }
 
 /**
@@ -209,10 +212,11 @@ export function mapMenuItemToUI(item: SupabaseMenuItem): UIMenuItem {
         description: item.description || '',
         price: Number(item.price),
         image: item.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=80',
-        category: 'Menu Item', // Can enhance with category lookup later
-        isPopular: false, // Can enhance with analytics later
+        category: item.category || 'Menu Item',
+        isPopular: false,
         isVegetarian: item.is_vegetarian,
-        spiceLevel: item.is_spicy ? 2 : 0, // Simple mapping, can enhance later
+        spiceLevel: item.is_spicy ? 2 : 0,
+        mealTimes: item.meal_times || [],
     };
 }
 
@@ -228,8 +232,8 @@ export function parseFavorites(data: any): number[] {
         try {
             const parsed = JSON.parse(data);
             if (Array.isArray(parsed)) return parsed.map(Number);
-        } catch {}
-        
+        } catch { }
+
         // Handle Postgres array literal format "{1,2}"
         if (data.startsWith('{') && data.endsWith('}')) {
             return data

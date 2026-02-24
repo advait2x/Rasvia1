@@ -148,6 +148,24 @@ export function FoodDetailModal({
               {item.description}
             </Text>
 
+            {/* Category + Meal Time chips */}
+            <View className="flex-row flex-wrap mb-4" style={{ gap: 6 }}>
+              {item.category && item.category !== "Menu Item" && (
+                <View style={{ backgroundColor: "rgba(255,153,51,0.15)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: "rgba(255,153,51,0.35)" }}>
+                  <Text style={{ fontFamily: "Manrope_700Bold", color: "#FF9933", fontSize: 12, textTransform: "capitalize" }}>
+                    {item.category}
+                  </Text>
+                </View>
+              )}
+              {item.mealTimes && item.mealTimes.map((mt, i) => (
+                <View key={i} style={{ backgroundColor: "#2a2a2a", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
+                  <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#bbb", fontSize: 12, textTransform: "capitalize" }}>
+                    {mt}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
             <View
               className="self-start px-3 py-1 rounded-full mb-6"
               style={{ backgroundColor: "#2a2a2a" }}

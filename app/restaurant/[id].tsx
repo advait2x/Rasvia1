@@ -40,8 +40,10 @@ import { MenuGridItem } from "@/components/MenuGridItem";
 import { MenuEditor } from "@/components/MenuEditor";
 import { FoodDetailModal } from "@/components/FoodDetailModal";
 import { GroupCartDrawer } from "@/components/GroupCartDrawer";
+import { HoursStatusBadge } from "@/components/HoursStatusBadge";
 import { RestaurantEditModal } from "@/components/RestaurantEditModal";
 import { useAdminMode } from "@/hooks/useAdminMode";
+import { useRestaurantHours } from "@/hooks/useRestaurantHours";
 import { supabase } from "@/lib/supabase";
 import {
   type SupabaseRestaurant,
@@ -60,6 +62,7 @@ import {
   groupMembers,
   type CartItem,
 } from "@/data/mockData";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const HERO_HEIGHT = SCREEN_HEIGHT * 0.42;
@@ -75,6 +78,7 @@ export default function RestaurantDetail() {
   const { isAdmin } = useAdminMode();
   const { session } = useAuth();
   const { addEvent, refreshActive } = useNotifications();
+  const { statusResult: hoursStatus } = useRestaurantHours(id);
 
   // ==================================================
   // STATE MANAGEMENT - Supabase Data
@@ -99,6 +103,8 @@ export default function RestaurantDetail() {
 
   // Live queue count from waitlist_entries
   const [liveQueueCount, setLiveQueueCount] = useState<number | null>(null);
+  // Active group session for this restaurant (if any)
+  const [hasActiveGroupSession, setHasActiveGroupSession] = useState(false);
 
 
   // Fetch party leader name + check for existing active entry
@@ -124,6 +130,30 @@ export default function RestaurantDetail() {
           if (data) setExistingEntry({ id: data.id, party_size: data.party_size });
         });
     }
+  }, [session?.user?.id, id]);
+
+  // Check for an active group session for this restaurant on mount
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const key = `rasvia:active_group_order:${session.user.id}`;
+    AsyncStorage.getItem(key).then((raw) => {
+      if (!raw) return;
+      try {
+        const stored = JSON.parse(raw);
+        // Verify the party session still exists and is open
+        supabase
+          .from("party_sessions")
+          .select("id, restaurant_id, status")
+          .eq("id", stored.sessionId)
+          .eq("status", "open")
+          .single()
+          .then(({ data }) => {
+            setHasActiveGroupSession(!!data && String(data.restaurant_id) === String(id));
+          });
+      } catch {
+        // corrupt data, ignore
+      }
+    });
   }, [session?.user?.id, id]);
 
   // Re-validate existing entry when screen regains focus (e.g. returning from waitlist)
@@ -826,30 +856,32 @@ export default function RestaurantDetail() {
               </Text>
             </View>
 
-            <View style={{ width: 1, height: 30, backgroundColor: "#333333" }} />
-
-            <View className="items-center">
-              <View className="flex-row items-center">
-                <Clock size={14} color="#FF9933" />
-                <WaitBadge
-                  waitTime={restaurant.waitTime}
-                  status={restaurant.waitStatus}
-                  size="sm"
-                />
-              </View>
-              <Text
-                style={{
-                  fontFamily: "Manrope_500Medium",
-                  color: "#999999",
-                  fontSize: 11,
-                  marginTop: 2,
-                }}
-              >
-                wait time
-              </Text>
-            </View>
-
-            <View style={{ width: 1, height: 30, backgroundColor: "#333333" }} />
+            {/* Divider + Wait time — only show when restaurant is currently open */}
+            {(!hoursStatus || hoursStatus.status === 'open') && (
+              <>
+                <View style={{ width: 1, height: 30, backgroundColor: "#333333" }} />
+                <View className="items-center">
+                  <View className="flex-row items-center">
+                    <Clock size={14} color="#FF9933" />
+                    <WaitBadge
+                      waitTime={restaurant.waitTime}
+                      status={restaurant.waitStatus}
+                      size="sm"
+                    />
+                  </View>
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_500Medium",
+                      color: "#999999",
+                      fontSize: 11,
+                      marginTop: 2,
+                    }}
+                  >
+                    wait time
+                  </Text>
+                </View>
+              </>
+            )}
 
             <View className="items-center">
               <View className="flex-row items-center">
@@ -879,7 +911,7 @@ export default function RestaurantDetail() {
           </View>
 
           {/* Address */}
-          <Pressable 
+          <Pressable
             className="flex-row items-center mt-4"
             onPress={() => {
               if (Platform.OS !== "web") {
@@ -905,6 +937,13 @@ export default function RestaurantDetail() {
               {restaurant.address} · {restaurant.distance}
             </Text>
           </Pressable>
+
+          {/* Hours status badge */}
+          {hoursStatus && (
+            <View style={{ marginTop: 8 }}>
+              <HoursStatusBadge statusResult={hoursStatus} size="md" />
+            </View>
+          )}
 
           {/* Description */}
           <Text
@@ -1068,6 +1107,7 @@ export default function RestaurantDetail() {
           members={groupMembers}
           onClose={() => setShowCart(false)}
           onUpdateQuantity={handleUpdateQuantity}
+          isGroupMode={hasActiveGroupSession}
           onShare={() =>
             Alert.alert("Share Cart", "Group link copied to clipboard!")
           }
@@ -1184,13 +1224,13 @@ export default function RestaurantDetail() {
             setRestaurant((prev) =>
               prev
                 ? {
-                    ...prev,
-                    name: updated.name,
-                    address: updated.address,
-                    description: updated.description,
-                    cuisine: updated.cuisine,
-                    tags: updated.cuisine.split(",").map((t) => t.trim()).filter(Boolean),
-                  }
+                  ...prev,
+                  name: updated.name,
+                  address: updated.address,
+                  description: updated.description,
+                  cuisine: updated.cuisine,
+                  tags: updated.cuisine.split(",").map((t) => t.trim()).filter(Boolean),
+                }
                 : prev
             );
             setShowEditModal(false);
