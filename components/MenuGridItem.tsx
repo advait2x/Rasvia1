@@ -170,13 +170,23 @@ export function MenuGridItem({
                   </Text>
                 </View>
               )}
-              {item.mealTimes && item.mealTimes.map((mt, i) => (
-                <View key={i} style={{ backgroundColor: "#2a2a2a", borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
-                  <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#888", fontSize: 8, textTransform: "capitalize" }}>
-                    {mt}
-                  </Text>
-                </View>
-              ))}
+              {item.mealTimes && item.mealTimes.map((mt, i) => {
+                const mealTimeStyles: Record<string, { bg: string; border: string; color: string; label: string }> = {
+                  breakfast: { bg: "rgba(249,115,22,0.15)", border: "rgba(249,115,22,0.4)", color: "#F97316", label: "Breakfast" },
+                  lunch:     { bg: "rgba(34,197,94,0.15)",  border: "rgba(34,197,94,0.4)",  color: "#22C55E", label: "Lunch" },
+                  dinner:    { bg: "rgba(129,140,248,0.15)",border: "rgba(129,140,248,0.4)",color: "#818CF8", label: "Dinner" },
+                  all_day:   { bg: "rgba(56,189,248,0.15)", border: "rgba(56,189,248,0.4)", color: "#38BDF8", label: "All Day" },
+                  specials:  { bg: "rgba(245,158,11,0.15)", border: "rgba(245,158,11,0.4)", color: "#F59E0B", label: "Specials" },
+                };
+                const style = mealTimeStyles[mt] ?? { bg: "rgba(148,163,184,0.15)", border: "rgba(148,163,184,0.3)", color: "#94A3B8", label: mt };
+                return (
+                  <View key={i} style={{ backgroundColor: style.bg, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, borderWidth: 0.5, borderColor: style.border }}>
+                    <Text style={{ fontFamily: "Manrope_600SemiBold", color: style.color, fontSize: 8 }}>
+                      {style.label}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
             <Text
               style={{

@@ -22,6 +22,9 @@ import {
     ChevronRight,
     CheckCircle2,
     Leaf,
+    Coffee,
+    Sun,
+    Moon,
 } from "lucide-react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
@@ -47,11 +50,10 @@ interface CheckoutModalProps {
     existingOrderId?: string;
 }
 
-const MEAL_PERIODS: { key: MealPeriod; label: string }[] = [
-    { key: "breakfast", label: "☕ Breakfast" },
-    { key: "lunch", label: "☀️ Lunch" },
-    { key: "dinner", label: "🌙 Dinner" },
-    { key: "special", label: "✨ Specials" },
+const MEAL_PERIODS: { key: MealPeriod; label: string; icon: any; color: string }[] = [
+    { key: "breakfast", label: "Breakfast", icon: Coffee, color: "#F97316" },
+    { key: "lunch",     label: "Lunch",     icon: Sun,    color: "#22C55E" },
+    { key: "dinner",   label: "Dinner",     icon: Moon,   color: "#818CF8" },
 ];
 
 const S = {
@@ -390,7 +392,7 @@ export function CheckoutModal({
                                 <Animated.View entering={FadeInDown.delay(80).duration(400)} style={S.card}>
                                     <Text style={S.label}>Meal Period</Text>
                                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                        {MEAL_PERIODS.map(({ key, label }) => {
+                                        {MEAL_PERIODS.map(({ key, label, icon: Icon, color }) => {
                                             const active = mealPeriod === key;
                                             return (
                                                 <Pressable
@@ -399,9 +401,12 @@ export function CheckoutModal({
                                                         if (Platform.OS !== "web") Haptics.selectionAsync();
                                                         setMealPeriod(key);
                                                     }}
-                                                    style={S.chip(active)}
+                                                    style={S.chip(active, color)}
                                                 >
-                                                    <Text style={S.chipText(active)}>{label}</Text>
+                                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                                        <Icon size={13} color={active ? color : "#666"} />
+                                                        <Text style={S.chipText(active, color)}>{label}</Text>
+                                                    </View>
                                                 </Pressable>
                                             );
                                         })}

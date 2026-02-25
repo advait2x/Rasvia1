@@ -989,7 +989,6 @@ function ZoomedInMarker({ restaurant, isClosed }: { restaurant: UIRestaurant; is
         shadowOpacity: 0.35,
         shadowRadius: 6,
         elevation: 5,
-        opacity: isClosed ? 0.75 : 1,
       }}
     >
       {/* Info — no image */}

@@ -443,6 +443,14 @@ export default function RestaurantDetail() {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setJoining(true);
     try {
+      // Ensure the session token is fresh before making an authenticated request
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        // Refresh failed — token is truly invalid; ask user to re-sign-in
+        Alert.alert("Session Expired", "Your session has expired. Please sign out and sign in again.");
+        return;
+      }
+
       const { data, error } = await supabase
         .from("waitlist_entries")
         .insert({
@@ -476,7 +484,7 @@ export default function RestaurantDetail() {
     } finally {
       setJoining(false);
     }
-  }, [partySize, customParty, session, restaurant?.id, router]);
+  }, [partySize, customParty, session, partyLeaderName, restaurant?.id, router]);
 
   const handleToggleFavorite = useCallback(async () => {
     if (Platform.OS !== "web") {
@@ -880,23 +888,23 @@ export default function RestaurantDetail() {
               <View className="items-center">
                 {isClosed ? (
                   <>
-                    <View style={{
-                      backgroundColor: "rgba(153,153,153,0.15)",
-                      borderRadius: 20,
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
-                    }}>
-                      <Text style={{
-                        fontFamily: "JetBrainsMono_600SemiBold",
-                        color: "#999999",
-                        fontSize: 11,
+                    <View className="flex-row items-center">
+                      <Clock size={14} color="#999999" />
+                      <View style={{
+                        backgroundColor: "rgba(153,153,153,0.15)",
+                        borderRadius: 20,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        marginLeft: 4,
                       }}>
-                        Closed
-                      </Text>
+                        <Text style={{
+                          fontFamily: "JetBrainsMono_600SemiBold",
+                          color: "#999999",
+                          fontSize: 11,
+                        }}>Closed</Text>
+                      </View>
                     </View>
-                    <Text style={{ fontFamily: "Manrope_500Medium", color: "#999999", fontSize: 11, marginTop: 2 }}>
-                      hours
-                    </Text>
+                    <Text style={{ fontFamily: "Manrope_500Medium", color: "#999999", fontSize: 11, marginTop: 2 }}>wait time</Text>
                   </>
                 ) : (
                   <>
