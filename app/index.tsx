@@ -39,6 +39,7 @@ import { useLocation } from "@/lib/location-context";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { useAuth } from "@/lib/auth-context";
 import { useNotifications } from "@/lib/notifications-context";
+import { useClosedRestaurantIds } from "@/hooks/useClosedRestaurantIds";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -57,6 +58,7 @@ export default function DiscoveryFeed() {
   const { isAdmin } = useAdminMode();
   const { session } = useAuth();
   const { unreadCount } = useNotifications();
+  const closedRestaurantIds = useClosedRestaurantIds();
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [showSearch, setShowSearch] = useState(false);
   const [activeGroupOrder, setActiveGroupOrder] = useState<ActiveGroupOrder | null>(null);
@@ -232,7 +234,14 @@ export default function DiscoveryFeed() {
     );
   }, [userCoords]);
 
-  const filteredRestaurants = restaurants.filter((r) => {
+  // Override waitStatus/waitTime for restaurants closed per their hours
+  const restaurantsWithHoursStatus = restaurants.map((r) =>
+    closedRestaurantIds.has(r.id)
+      ? { ...r, waitStatus: 'darkgrey' as const, waitTime: -1 }
+      : r
+  );
+
+  const filteredRestaurants = restaurantsWithHoursStatus.filter((r) => {
     if (!isAdmin && !r.isEnabled) return false;
     if (activeFilter === "all") return true;
     return r.waitStatus === activeFilter;
@@ -242,17 +251,15 @@ export default function DiscoveryFeed() {
 
   const nearbyRestaurants = [...filteredRestaurants].sort((a, b) => {
     if (activeFilter !== "all") {
-      // when a time filter is active: sort by wait time first, then distance
       const aw = a.waitTime ?? 9999;
       const bw = b.waitTime ?? 9999;
       if (aw !== bw) return aw - bw;
       return parseDist(a.distance) - parseDist(b.distance);
     }
-    // default: sort by distance
     return parseDist(a.distance) - parseDist(b.distance);
   });
 
-  const trendingRestaurants = restaurants
+  const trendingRestaurants = restaurantsWithHoursStatus
     .filter((r) => (isAdmin || r.isEnabled) && r.waitStatus !== "darkgrey" && r.waitStatus !== "grey")
     .slice(0, 3);
 
@@ -652,7 +659,7 @@ export default function DiscoveryFeed() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}
           >
-            {restaurants
+            {restaurantsWithHoursStatus
               .filter((r) => (isAdmin || r.isEnabled) && r.waitStatus === "green")
               .map((restaurant, index) => (
                 <RestaurantListCard

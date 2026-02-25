@@ -347,6 +347,14 @@ export default function JoinPartyScreen() {
                             await supabase.from('party_sessions').update({ status: 'cancelled' }).eq('id', sessionId);
                             await AsyncStorage.removeItem(activeOrderKey);
                             if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                            addEvent({
+                                type: 'group_ended',
+                                restaurantName,
+                                restaurantId: String(restaurantId),
+                                entryId: String(sessionId),
+                                partySize: cartItems.length,
+                                timestamp: new Date().toISOString(),
+                            });
                             goBack();
                         } catch (e: any) {
                             Alert.alert('Error', e.message || 'Could not cancel order.');

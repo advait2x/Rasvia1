@@ -46,6 +46,7 @@ import {
   mapSupabaseToUI,
 } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
+import { useClosedRestaurantIds } from "@/hooks/useClosedRestaurantIds";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { AddRestaurantModal } from "@/components/AddRestaurantModal";
 import { AdminRestaurantPanel } from "@/components/AdminRestaurantPanel";
@@ -199,6 +200,8 @@ export default function MapScreen() {
     [],
   );
   const [showMapSearch, setShowMapSearch] = useState(false);
+  // Live closed status from hours — automatically re-evaluates every 60 s
+  const closedRestaurantIds = useClosedRestaurantIds();
 
   // Track which geographic cluster to show next (persists across renders)
   const nearbyClusterIndexRef = useRef(0);
@@ -562,12 +565,12 @@ export default function MapScreen() {
             Children swap (Dot ↔ Card) but the Marker instances stay. */}
         {mappableRestaurants.map((restaurant) => (
           <Marker
-            key={restaurant.id}
+            key={`${restaurant.id}-${closedRestaurantIds.has(restaurant.id)}`}
             coordinate={{
               latitude: restaurant.lat!,
               longitude: restaurant.long!,
             }}
-            tracksViewChanges={isZoomedIn}
+            tracksViewChanges={false}
             onPress={() =>
               isZoomedIn
                 ? handleRestaurantPress(restaurant)
@@ -575,9 +578,9 @@ export default function MapScreen() {
             }
           >
             {isZoomedIn ? (
-              <ZoomedInMarker restaurant={restaurant} />
+              <ZoomedInMarker restaurant={restaurant} isClosed={closedRestaurantIds.has(restaurant.id)} />
             ) : (
-              <DotMarker status={restaurant.waitStatus} />
+              <DotMarker status={restaurant.waitStatus} isClosed={closedRestaurantIds.has(restaurant.id)} />
             )}
           </Marker>
         ))}
@@ -587,6 +590,7 @@ export default function MapScreen() {
       {selectedRestaurant && (
         <SelectedRestaurantCard
           restaurant={selectedRestaurant}
+          isClosed={closedRestaurantIds.has(selectedRestaurant.id)}
           onDismiss={() => setSelectedRestaurant(null)}
           onPress={() =>
             router.navigate(`/restaurant/${selectedRestaurant.id}` as any)
@@ -728,10 +732,11 @@ export default function MapScreen() {
         )}
       </SafeAreaView>
 
-      {/* Nearby list overlay with swipe-to-dismiss */}
+      {/* Nearby list overlay — add closedRestaurantIds for live closed status + sort */}
       {showNearbyList && nearbyRestaurants.length > 0 && (
         <NearbyListOverlay
           restaurants={nearbyRestaurants}
+          closedRestaurantIds={closedRestaurantIds}
           onClose={() => {
             if (Platform.OS !== "web") {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -742,8 +747,6 @@ export default function MapScreen() {
             if (Platform.OS !== "web") {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             }
-            // Offset latitude so the pin lands in the visible area above the overlay
-            // Overlay covers ~55% of screen, so shift center upward by that fraction
             const currentDelta = region.latitudeDelta || 0.015;
             const latOffset = currentDelta * (OVERLAY_HEIGHT / SCREEN_HEIGHT) * 0.5;
             const targetRegion: Region = {
@@ -802,7 +805,6 @@ export default function MapScreen() {
           onSelect={(r) => {
             setShowMapSearch(false);
             setShowNearbyList(false);
-            // Animate map to the restaurant
             const targetRegion: Region = {
               latitude: r.lat!,
               longitude: r.long!,
@@ -969,7 +971,9 @@ export default function MapScreen() {
 // ==========================================
 // ZOOMED IN MARKER: rich info card
 // ==========================================
-function ZoomedInMarker({ restaurant }: { restaurant: UIRestaurant }) {
+function ZoomedInMarker({ restaurant, isClosed }: { restaurant: UIRestaurant; isClosed?: boolean }) {
+  // Override the displayed status to darkgrey when closed per hours
+  const displayStatus = (isClosed ? 'darkgrey' : restaurant.waitStatus) as typeof restaurant.waitStatus;
   return (
     <View
       style={{
@@ -985,6 +989,7 @@ function ZoomedInMarker({ restaurant }: { restaurant: UIRestaurant }) {
         shadowOpacity: 0.35,
         shadowRadius: 6,
         elevation: 5,
+        opacity: isClosed ? 0.75 : 1,
       }}
     >
       {/* Info — no image */}
@@ -1035,7 +1040,7 @@ function ZoomedInMarker({ restaurant }: { restaurant: UIRestaurant }) {
         </Text>
         <View
           style={{
-            backgroundColor: STATUS_BG[restaurant.waitStatus],
+            backgroundColor: STATUS_BG[displayStatus],
             borderRadius: 8,
             paddingHorizontal: 5,
             paddingVertical: 1,
@@ -1045,11 +1050,11 @@ function ZoomedInMarker({ restaurant }: { restaurant: UIRestaurant }) {
           <Text
             style={{
               fontFamily: "JetBrainsMono_600SemiBold",
-              color: STATUS_COLORS[restaurant.waitStatus],
+              color: STATUS_COLORS[displayStatus],
               fontSize: 9,
             }}
           >
-            {restaurant.waitStatus === 'darkgrey' ? 'Closed' : restaurant.waitTime < 0 ? '--m' : `${restaurant.waitTime}m`}
+            {displayStatus === 'darkgrey' ? 'Closed' : restaurant.waitTime < 0 ? '--m' : `${restaurant.waitTime}m`}
           </Text>
         </View>
       </View>
@@ -1062,15 +1067,15 @@ function ZoomedInMarker({ restaurant }: { restaurant: UIRestaurant }) {
 // outer = wait color, middle = black, center = white
 // Size scales with zoom level
 // ==========================================
-function DotMarker({ status, size = 20 }: { status: WaitStatus | "purple", size?: number }) {
-  // Fixed size — no dynamic props means the marker bitmap is never re-rasterized
+function DotMarker({ status, size = 20, isClosed }: { status: WaitStatus | "purple"; size?: number; isClosed?: boolean }) {
+  const dotColor = isClosed ? '#555555' : STATUS_COLORS[status];
   return (
     <View
       style={{
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: STATUS_COLORS[status],
+        backgroundColor: dotColor,
         alignItems: "center",
         justifyContent: "center",
         shadowColor: "#000",
@@ -1078,6 +1083,7 @@ function DotMarker({ status, size = 20 }: { status: WaitStatus | "purple", size?
         shadowOpacity: 0.4,
         shadowRadius: 3,
         elevation: 4,
+        opacity: isClosed ? 0.65 : 1,
       }}
     >
       {/* Black middle ring */}
@@ -1112,12 +1118,14 @@ const CARD_HEIGHT = 130; // approximate card height for slide animation
 
 function SelectedRestaurantCard({
   restaurant,
+  isClosed,
   onDismiss,
   onPress,
   isAdmin,
   onAdminPress,
 }: {
   restaurant: UIRestaurant;
+  isClosed?: boolean;
   onDismiss: () => void;
   onPress: () => void;
   isAdmin?: boolean;
@@ -1277,7 +1285,7 @@ function SelectedRestaurantCard({
               <Clock size={12} color="#FF9933" />
               <View
                 style={{
-                  backgroundColor: STATUS_BG[restaurant.waitStatus],
+                  backgroundColor: STATUS_BG[isClosed ? 'darkgrey' : restaurant.waitStatus],
                   borderRadius: 20,
                   paddingHorizontal: 8,
                   paddingVertical: 2,
@@ -1287,14 +1295,16 @@ function SelectedRestaurantCard({
                 <Text
                   style={{
                     fontFamily: "JetBrainsMono_600SemiBold",
-                    color: STATUS_COLORS[restaurant.waitStatus],
+                    color: STATUS_COLORS[isClosed ? 'darkgrey' : restaurant.waitStatus],
                     fontSize: 11,
                   }}
                 >
-                  {restaurant.waitStatus === "darkgrey" 
-                    ? "Closed" 
-                    : restaurant.waitTime < 0 
-                    ? "-- min" 
+                  {isClosed
+                    ? "Closed"
+                    : restaurant.waitStatus === "darkgrey"
+                    ? "Closed"
+                    : restaurant.waitTime < 0
+                    ? "-- min"
                     : `${restaurant.waitTime} min`}
                 </Text>
               </View>
@@ -1353,10 +1363,12 @@ function NearbyListOverlay({
   restaurants,
   onClose,
   onSelect,
+  closedRestaurantIds,
 }: {
   restaurants: UIRestaurant[];
   onClose: () => void;
   onSelect: (r: UIRestaurant) => void;
+  closedRestaurantIds: Set<string>;
 }) {
   // Prefetch images for the overlay restaurants
   useEffect(() => {
@@ -1507,8 +1519,17 @@ function NearbyListOverlay({
         style={{ paddingHorizontal: 16 }}
         showsVerticalScrollIndicator={false}
       >
-        {restaurants.map((r, i) => (
-          <Pressable
+        {/* Sort: open first, closed last */}
+        {[...restaurants]
+          .sort((a, b) => {
+            const aClosed = closedRestaurantIds.has(a.id) ? 1 : 0;
+            const bClosed = closedRestaurantIds.has(b.id) ? 1 : 0;
+            return aClosed - bClosed;
+          })
+          .map((r, i) => {
+          const isClosed = closedRestaurantIds.has(r.id);
+          const displayStatus = (isClosed ? 'darkgrey' : r.waitStatus) as typeof r.waitStatus;
+          return (<Pressable
             key={r.id}
             onPress={() => {
               if (Platform.OS !== "web") {
@@ -1564,7 +1585,7 @@ function NearbyListOverlay({
             {/* Wait badge */}
             <View
               style={{
-                backgroundColor: STATUS_BG[r.waitStatus],
+                backgroundColor: STATUS_BG[displayStatus],
                 borderRadius: 12,
                 paddingHorizontal: 8,
                 paddingVertical: 3,
@@ -1574,11 +1595,11 @@ function NearbyListOverlay({
               <Text
                 style={{
                   fontFamily: "JetBrainsMono_600SemiBold",
-                  color: STATUS_COLORS[r.waitStatus],
+                  color: STATUS_COLORS[displayStatus],
                   fontSize: 11,
                 }}
               >
-                {r.waitStatus === 'darkgrey' ? 'Closed' : r.waitTime < 0 ? '--' : `${r.waitTime}m`}
+                {displayStatus === 'darkgrey' ? 'Closed' : r.waitTime < 0 ? '--' : `${r.waitTime}m`}
               </Text>
             </View>
             {/* Distance */}
@@ -1593,8 +1614,8 @@ function NearbyListOverlay({
                 {r.distance}
               </Text>
             </View>
-          </Pressable>
-        ))}
+          </Pressable>);
+        })}
       </ScrollView>
     </RNAnimated.View>
   );

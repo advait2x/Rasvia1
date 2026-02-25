@@ -11,6 +11,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
@@ -25,6 +26,11 @@ import {
   Share2,
   ShoppingBag,
   Settings,
+  Coffee,
+  Sun,
+  Moon,
+  Sparkles as SparklesIcon,
+  Tag,
 } from "lucide-react-native";
 import Animated, {
   useAnimatedStyle,
@@ -78,7 +84,7 @@ export default function RestaurantDetail() {
   const { isAdmin } = useAdminMode();
   const { session } = useAuth();
   const { addEvent, refreshActive } = useNotifications();
-  const { statusResult: hoursStatus } = useRestaurantHours(id);
+  const { statusResult: hoursStatus, hours: restaurantHours } = useRestaurantHours(id);
 
   // ==================================================
   // STATE MANAGEMENT - Supabase Data
@@ -105,6 +111,9 @@ export default function RestaurantDetail() {
   const [liveQueueCount, setLiveQueueCount] = useState<number | null>(null);
   // Active group session for this restaurant (if any)
   const [hasActiveGroupSession, setHasActiveGroupSession] = useState(false);
+  // Menu category filter
+  type MenuFilter = 'all' | 'breakfast' | 'lunch' | 'dinner' | 'specials' | 'other';
+  const [activeMenuFilter, setActiveMenuFilter] = useState<MenuFilter>('all');
 
 
   // Fetch party leader name + check for existing active entry
@@ -516,7 +525,9 @@ export default function RestaurantDetail() {
     transform: [{ scale: joinBtnScale.value }],
   }));
 
-  const isClosed = restaurant?.waitStatus === "darkgrey";
+  const isClosed =
+    restaurant?.waitStatus === "darkgrey" ||
+    hoursStatus?.status === "closed";
   const noWait = restaurant?.waitTime != null && restaurant.waitTime < 0;
   const waitlistClosed = restaurant?.waitlistOpen === false;
 
@@ -938,10 +949,10 @@ export default function RestaurantDetail() {
             </Text>
           </Pressable>
 
-          {/* Hours status badge */}
+          {/* Hours status badge — tap to see full schedule */}
           {hoursStatus && (
             <View style={{ marginTop: 8 }}>
-              <HoursStatusBadge statusResult={hoursStatus} size="md" />
+              <HoursStatusBadge statusResult={hoursStatus} hours={restaurantHours} size="md" />
             </View>
           )}
 
@@ -983,9 +994,78 @@ export default function RestaurantDetail() {
             </Text>
           </View>
 
+          {/* ─ Meal-period filter bar ─ */}
+          {(() => {
+            // Compute which filters are relevant for this menu
+            const hasMealTime = (mt: string) => menu.some(m => m.mealTimes?.includes(mt));
+            const hasOther = menu.some(m => !m.mealTimes || m.mealTimes.length === 0);
+            type FilterDef = { key: MenuFilter; label: string; color: string; bg: string; border: string; icon: any };
+            const FILTER_DEFS: FilterDef[] = [
+              { key: 'all',      label: 'All',      color: '#FF9933',  bg: 'rgba(255,153,51,0.15)',  border: 'rgba(255,153,51,0.4)',   icon: null },
+              { key: 'breakfast',label: 'Breakfast', color: '#F97316',  bg: 'rgba(249,115,22,0.15)',  border: 'rgba(249,115,22,0.4)',   icon: Coffee },
+              { key: 'lunch',    label: 'Lunch',     color: '#22C55E',  bg: 'rgba(34,197,94,0.15)',   border: 'rgba(34,197,94,0.4)',    icon: Sun },
+              { key: 'dinner',   label: 'Dinner',    color: '#818CF8',  bg: 'rgba(129,140,248,0.15)', border: 'rgba(129,140,248,0.4)', icon: Moon },
+              { key: 'specials', label: 'Specials',  color: '#F59E0B',  bg: 'rgba(245,158,11,0.15)',  border: 'rgba(245,158,11,0.4)',   icon: SparklesIcon },
+              { key: 'other',    label: 'Other',     color: '#94A3B8',  bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.4)', icon: Tag },
+            ];
+            const available = FILTER_DEFS.filter(f =>
+              f.key === 'all' ||
+              (f.key === 'other' ? hasOther : hasMealTime(f.key))
+            );
+            if (available.length <= 1) return null; // nothing to filter
+
+            return (
+              <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 8 }}
+                >
+                  {available.map(f => {
+                    const isActive = activeMenuFilter === f.key;
+                    const Icon = f.icon;
+                    return (
+                      <Pressable
+                        key={f.key}
+                        onPress={() => {
+                          if (Platform.OS !== 'web') Haptics.selectionAsync();
+                          setActiveMenuFilter(f.key as MenuFilter);
+                        }}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 5,
+                          paddingHorizontal: 14,
+                          paddingVertical: 8,
+                          borderRadius: 20,
+                          backgroundColor: isActive ? f.bg : '#1a1a1a',
+                          borderWidth: 1,
+                          borderColor: isActive ? f.border : '#2a2a2a',
+                        }}
+                      >
+                        {Icon && <Icon size={12} color={isActive ? f.color : '#666'} />}
+                        <Text style={{
+                          fontFamily: isActive ? 'Manrope_700Bold' : 'Manrope_500Medium',
+                          fontSize: 13,
+                          color: isActive ? f.color : '#888',
+                        }}>
+                          {f.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            );
+          })()}
+
           <View className="px-4">
             <MenuEditor
-              menu={menu}
+              menu={menu.filter(m => {
+                if (activeMenuFilter === 'all') return true;
+                if (activeMenuFilter === 'other') return !m.mealTimes || m.mealTimes.length === 0;
+                return m.mealTimes?.includes(activeMenuFilter) ?? false;
+              })}
               setMenu={setMenu}
               onItemPress={(item) => setSelectedItem(item)}
               onQuickAdd={(item) => handleAddToCart(item)}

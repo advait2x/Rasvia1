@@ -27,6 +27,7 @@ import {
   UtensilsCrossed,
   ShoppingCart,
   CheckCheck,
+  XCircle,
 } from "lucide-react-native";
 import Animated, {
   FadeIn,
@@ -161,6 +162,11 @@ const EVENT_CONFIG: Record<
     label: (r) => `Group order submitted at ${r}`,
     color: "#22C55E",
     icon: CheckCheck,
+  },
+  group_ended: {
+    label: (r) => `Group order at ${r} was ended`,
+    color: "#EF4444",
+    icon: XCircle,
   },
 };
 

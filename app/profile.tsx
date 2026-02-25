@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -35,6 +35,10 @@ import {
   Shield,
   Phone,
   Heart,
+  Clock,
+  Bug,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react-native";
 import Animated, {
   FadeIn,
@@ -50,6 +54,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { useLocation } from "@/lib/location-context";
 import { useAdminMode } from "@/hooks/useAdminMode";
+import { setDebugTime, getDebugTime } from "@/lib/restaurant-hours";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -93,6 +98,22 @@ const DAYS = [
   { short: "S", full: "Sun" },
 ];
 
+// ── CST day names used by debug picker ──
+const DEBUG_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Format a fake debug date (already in CST) to readable string */
+function formatDebugDisplay(iso: string | null): string {
+  if (!iso) return 'Real time (no override)';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', {
+      timeZone: 'America/Chicago',
+      weekday: 'short', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+  } catch { return 'Invalid time'; }
+}
+
 export default function ProfileSettingsScreen() {
   const router = useRouter();
   const { session } = useAuth();
@@ -109,6 +130,16 @@ export default function ProfileSettingsScreen() {
   const [tempPhone, setTempPhone] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // Admin tab state (only used when isAdmin)
+  const [activeTab, setActiveTab] = useState<'preferences' | 'location' | 'debug'>('preferences');
+
+  // Debug time override state
+  const [debugDay, setDebugDay] = useState(0);     // 0=Sun..6=Sat
+  const [debugHour, setDebugHour] = useState(12);  // 1–12
+  const [debugAmPm, setDebugAmPm] = useState<'AM' | 'PM'>('PM');
+  const [debugMinute, setDebugMinute] = useState(0);
+  const [activeDebugTime, setActiveDebugTime] = useState<string | null>(getDebugTime());
 
   // Dining Preferences State
   const [loadingPrefs, setLoadingPrefs] = useState(true);
@@ -458,46 +489,187 @@ export default function ProfileSettingsScreen() {
     transform: [{ scale: saveLocScale.value }],
   }));
 
+  // ── Debug time helpers ──
+  function applyDebugOverride() {
+    const now = new Date();
+
+    // Determine CST/CDT offset from UTC (CST = UTC-6, CDT = UTC-5)
+    const isCDT = (() => {
+      try {
+        const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', timeZoneName: 'short' });
+        return fmt.format(now).includes('CDT');
+      } catch { return false; }
+    })();
+    const cstOffsetHours = isCDT ? 5 : 6; // how many hours ahead UTC is of CST
+
+    // Get current CST date parts to know which calendar day to anchor on
+    const cstFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short' });
+    const cstDayIdx = DEBUG_DAYS.indexOf(cstFormatter.format(now));
+    const dayDiff = debugDay - cstDayIdx;
+
+    const base = new Date(now);
+    base.setDate(base.getDate() + dayDiff);
+
+    // Get the CST calendar date (year/month/day) for the chosen weekday
+    const year  = base.toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric' });
+    const month = base.toLocaleString('en-US', { timeZone: 'America/Chicago', month: '2-digit' });
+    const day   = base.toLocaleString('en-US', { timeZone: 'America/Chicago', day: '2-digit' });
+
+    // Convert 12h → 24h for UTC calculation
+    let hour24 = debugHour % 12; // 12 AM → 0, 12 PM → 12
+    if (debugAmPm === 'PM') hour24 += 12;
+    // Build UTC ISO directly: UTC hour = CST hour + offset
+    const utcHour = hour24 + cstOffsetHours;
+    const dayOverflow = utcHour >= 24 ? 1 : 0;
+    const finalUTCHour = utcHour % 24;
+
+    // If utcHour overflows into the next day, advance the date by 1
+    const dateObj = new Date(`${year}-${month}-${day}T00:00:00Z`);
+    dateObj.setUTCDate(dateObj.getUTCDate() + dayOverflow);
+    const finalYear  = dateObj.getUTCFullYear();
+    const finalMonth = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+    const finalDay   = String(dateObj.getUTCDate()).padStart(2, '0');
+
+    const iso = `${finalYear}-${finalMonth}-${finalDay}T${String(finalUTCHour).padStart(2,'0')}:${String(debugMinute).padStart(2,'0')}:00.000Z`;
+
+    setDebugTime(iso);
+    setActiveDebugTime(iso);
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  function resetDebugTime() {
+    setDebugTime(null);
+    setActiveDebugTime(null);
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  }
+
   return (
     <View className="flex-1 bg-rasvia-black">
       <SafeAreaView className="flex-1" edges={["top"]}>
         {/* Header */}
         <Animated.View
           entering={FadeIn.duration(400)}
-          className="flex-row items-center px-5 pt-2 pb-4"
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 20,
+            paddingTop: 8,
+            paddingBottom: 16,
+          }}
         >
+          {/* Left: back button + title */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                router.back();
+              }}
+              style={{
+                backgroundColor: "#1a1a1a",
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: "#2a2a2a",
+                marginRight: 16,
+              }}
+            >
+              <ArrowLeft size={22} color="#f5f5f5" />
+            </Pressable>
+            <Text
+              style={{
+                fontFamily: "BricolageGrotesque_800ExtraBold",
+                color: "#f5f5f5",
+                fontSize: 28,
+                letterSpacing: -0.5,
+              }}
+            >
+              My Profile
+            </Text>
+          </View>
+
+          {/* Right: Log Out button */}
           <Pressable
-            onPress={() => {
-              if (Platform.OS !== "web") {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }
-              router.back();
-            }}
+            onPress={handleLogout}
+            disabled={loggingOut}
             style={{
-              backgroundColor: "#1a1a1a",
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              alignItems: "center",
-              justifyContent: "center",
               borderWidth: 1,
-              borderColor: "#2a2a2a",
-              marginRight: 16,
+              borderColor: 'rgba(239,68,68,0.35)',
+              borderRadius: 22,
+              paddingVertical: 9,
+              paddingHorizontal: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: 'rgba(239,68,68,0.07)',
+              opacity: loggingOut ? 0.5 : 1,
             }}
           >
-            <ArrowLeft size={22} color="#f5f5f5" />
+            {loggingOut
+              ? <ActivityIndicator size="small" color="#EF4444" />
+              : <LogOut size={15} color="#EF4444" />
+            }
+            <Text style={{
+              fontFamily: 'Manrope_600SemiBold',
+              color: '#EF4444',
+              fontSize: 13,
+            }}>Log Out</Text>
           </Pressable>
-          <Text
-            style={{
-              fontFamily: "BricolageGrotesque_800ExtraBold",
-              color: "#f5f5f5",
-              fontSize: 28,
-              letterSpacing: -0.5,
-            }}
-          >
-            My Profile
-          </Text>
         </Animated.View>
+
+        {/* ── Admin Tab Bar ── */}
+        {isAdmin && (
+          <View style={{
+            flexDirection: 'row',
+            marginHorizontal: 20,
+            marginBottom: 8,
+            backgroundColor: '#1a1a1a',
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: '#2a2a2a',
+            padding: 4,
+          }}>
+            {(['preferences', 'location', 'debug'] as const).map((tab) => {
+              const isActive = activeTab === tab;
+              const label = tab === 'preferences' ? 'Preferences' : tab === 'location' ? 'Location' : 'Debug';
+              return (
+                <Pressable
+                  key={tab}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') Haptics.selectionAsync();
+                    setActiveTab(tab);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 9,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 11,
+                    backgroundColor: isActive
+                      ? tab === 'debug' ? 'rgba(245,158,11,0.18)' : 'rgba(255,153,51,0.18)'
+                      : 'transparent',
+                  }}
+                >
+                  <Text style={{
+                    fontFamily: isActive ? 'BricolageGrotesque_700Bold' : 'Manrope_600SemiBold',
+                    fontSize: 13,
+                    lineHeight: 18,
+                    color: isActive
+                      ? tab === 'debug' ? '#F59E0B' : '#FF9933'
+                      : '#666666',
+                  }}>
+                    {tab === 'debug' ? '🐞 ' + label : label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
 
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -622,6 +794,7 @@ export default function ProfileSettingsScreen() {
           {/* ==========================================
                         DINING PREFERENCES SECTION
                     ========================================== */}
+          {(!isAdmin || activeTab === 'preferences') && (
           <Animated.View
             entering={FadeInDown.delay(150).duration(500)}
             className="mx-5 mb-8"
@@ -998,9 +1171,10 @@ export default function ProfileSettingsScreen() {
               )}
             </View>
           </Animated.View>
+          )}
 
-
-          {/* Settings List */}
+          {/* Settings List — always shown */}
+          {(!isAdmin || activeTab === 'preferences') && (
           <Animated.View
             entering={FadeInDown.delay(200).duration(500)}
             className="mx-5 mb-8"
@@ -1083,10 +1257,12 @@ export default function ProfileSettingsScreen() {
               }}
             />
           </Animated.View>
+          )}
 
           {/* ==========================================
                         LOCATION SETTINGS SECTION
                     ========================================== */}
+          {(!isAdmin || activeTab === 'location') && (
           <Animated.View
             entering={FadeInDown.delay(220).duration(500)}
             className="mx-5 mb-8"
@@ -1290,6 +1466,243 @@ export default function ProfileSettingsScreen() {
               )}
             </View>
           </Animated.View>
+          )}
+
+          {/* ==========================================
+                        DEBUG TAB (Admin only)
+                    ========================================== */}
+          {isAdmin && activeTab === 'debug' && (
+            <Animated.View
+              entering={FadeInDown.delay(100).duration(400)}
+              className="mx-5 mb-8"
+            >
+              {/* Header */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+                <Bug size={18} color="#F59E0B" />
+                <Text style={{
+                  fontFamily: 'BricolageGrotesque_700Bold',
+                  color: '#f5f5f5',
+                  fontSize: 18,
+                  marginLeft: 8,
+                }}>Debug Tools</Text>
+              </View>
+
+              {/* Caution Banner */}
+              <View style={{
+                backgroundColor: 'rgba(245,158,11,0.1)',
+                borderWidth: 1,
+                borderColor: 'rgba(245,158,11,0.3)',
+                borderRadius: 14,
+                padding: 14,
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginBottom: 16,
+                gap: 10,
+              }}>
+                <AlertTriangle size={16} color="#F59E0B" />
+                <Text style={{
+                  fontFamily: 'Manrope_500Medium',
+                  color: '#F59E0B',
+                  fontSize: 13,
+                  flex: 1,
+                  lineHeight: 18,
+                }}>
+                  Debug mode — time override resets when app restarts. Affects hours display for all restaurants.
+                </Text>
+              </View>
+
+              {/* Current override display */}
+              <View style={{
+                backgroundColor: '#1a1a1a',
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: '#2a2a2a',
+                padding: 16,
+                marginBottom: 16,
+              }}>
+                <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#999', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
+                  Active App Time (CST)
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Clock size={15} color={activeDebugTime ? '#F59E0B' : '#666'} />
+                  <Text style={{
+                    fontFamily: 'Manrope_600SemiBold',
+                    color: activeDebugTime ? '#F59E0B' : '#888',
+                    fontSize: 14,
+                  }}>
+                    {formatDebugDisplay(activeDebugTime)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Picker Card */}
+              <View style={{
+                backgroundColor: '#1a1a1a',
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: '#2a2a2a',
+                padding: 20,
+                marginBottom: 14,
+              }}>
+                {/* Day Picker */}
+                <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#999', fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
+                  Day of Week
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }} contentContainerStyle={{ gap: 8 }}>
+                  {DEBUG_DAYS.map((d, i) => (
+                    <Pressable
+                      key={d}
+                      onPress={() => { setDebugDay(i); if (Platform.OS !== 'web') Haptics.selectionAsync(); }}
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 22,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: debugDay === i ? 'rgba(245,158,11,0.18)' : '#262626',
+                        borderWidth: debugDay === i ? 1.5 : 1,
+                        borderColor: debugDay === i ? '#F59E0B' : '#333',
+                      }}
+                    >
+                      <Text style={{
+                        fontFamily: 'BricolageGrotesque_700Bold',
+                        fontSize: 11,
+                        color: debugDay === i ? '#F59E0B' : '#888',
+                      }}>{d}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+
+                {/* Hour Picker (1–12) */}
+                <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#999', fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
+                  Hour
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} style={{ marginBottom: 10 }}>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+                    <Pressable
+                      key={h}
+                      onPress={() => { setDebugHour(h); if (Platform.OS !== 'web') Haptics.selectionAsync(); }}
+                      style={{
+                        minWidth: 44,
+                        height: 44,
+                        borderRadius: 12,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        paddingHorizontal: 8,
+                        backgroundColor: debugHour === h ? 'rgba(245,158,11,0.18)' : '#262626',
+                        borderWidth: debugHour === h ? 1.5 : 1,
+                        borderColor: debugHour === h ? '#F59E0B' : '#333',
+                      }}
+                    >
+                      <Text style={{
+                        fontFamily: 'JetBrainsMono_600SemiBold',
+                        fontSize: 13,
+                        color: debugHour === h ? '#F59E0B' : '#888',
+                      }}>{h}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                {/* AM / PM toggle — below the hour row */}
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+                  {(['AM', 'PM'] as const).map((period) => (
+                    <Pressable
+                      key={period}
+                      onPress={() => { setDebugAmPm(period); if (Platform.OS !== 'web') Haptics.selectionAsync(); }}
+                      style={{
+                        flex: 1,
+                        height: 40,
+                        borderRadius: 12,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: debugAmPm === period ? 'rgba(245,158,11,0.18)' : '#262626',
+                        borderWidth: debugAmPm === period ? 1.5 : 1,
+                        borderColor: debugAmPm === period ? '#F59E0B' : '#333',
+                      }}
+                    >
+                      <Text style={{
+                        fontFamily: 'JetBrainsMono_600SemiBold',
+                        fontSize: 14,
+                        color: debugAmPm === period ? '#F59E0B' : '#888',
+                      }}>{period}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {/* Minute Picker */}
+                <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#999', fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
+                  Minute
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                  {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+                    <Pressable
+                      key={m}
+                      onPress={() => { setDebugMinute(m); if (Platform.OS !== 'web') Haptics.selectionAsync(); }}
+                      style={{
+                        minWidth: 44,
+                        height: 44,
+                        borderRadius: 12,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        paddingHorizontal: 8,
+                        backgroundColor: debugMinute === m ? 'rgba(245,158,11,0.18)' : '#262626',
+                        borderWidth: debugMinute === m ? 1.5 : 1,
+                        borderColor: debugMinute === m ? '#F59E0B' : '#333',
+                      }}
+                    >
+                      <Text style={{
+                        fontFamily: 'JetBrainsMono_600SemiBold',
+                        fontSize: 12,
+                        color: debugMinute === m ? '#F59E0B' : '#888',
+                      }}>:{String(m).padStart(2,'0')}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Action Buttons */}
+              <Pressable
+                onPress={applyDebugOverride}
+                style={{
+                  backgroundColor: '#F59E0B',
+                  borderRadius: 14,
+                  height: 50,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  marginBottom: 10,
+                  shadowColor: '#F59E0B',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 10,
+                  elevation: 6,
+                }}
+              >
+                <Clock size={16} color="#0f0f0f" />
+                <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#0f0f0f', fontSize: 15, marginLeft: 8 }}>
+                  Apply Time Override
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={resetDebugTime}
+                style={{
+                  backgroundColor: 'transparent',
+                  borderRadius: 14,
+                  height: 50,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  borderWidth: 1,
+                  borderColor: '#333',
+                }}
+              >
+                <RefreshCw size={15} color="#999" />
+                <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#999', fontSize: 15, marginLeft: 8 }}>
+                  Reset to Real Time
+                </Text>
+              </Pressable>
+            </Animated.View>
+          )}
 
           {/* Admin Pulse — only visible to admins */}
           {isAdmin && (
@@ -1325,46 +1738,6 @@ export default function ProfileSettingsScreen() {
             </Animated.View>
           )}
 
-          {/* Log Out */}
-          <Animated.View
-            entering={FadeInDown.delay(300).duration(500)}
-            style={[logoutStyle]}
-            className="mx-5"
-          >
-            <Pressable
-              onPress={handleLogout}
-              onPressIn={() => {
-                logoutScale.value = withSpring(0.97);
-              }}
-              onPressOut={() => {
-                logoutScale.value = withSpring(1);
-              }}
-              disabled={loggingOut}
-              style={{
-                borderWidth: 1,
-                borderColor: "rgba(239, 68, 68, 0.3)",
-                borderRadius: 16,
-                paddingVertical: 16,
-                alignItems: "center",
-                justifyContent: "center",
-                flexDirection: "row",
-                backgroundColor: "rgba(239, 68, 68, 0.06)",
-                opacity: loggingOut ? 0.5 : 1,
-              }}
-            >
-              <LogOut size={18} color="#EF4444" />
-              <Text
-                style={{
-                  fontFamily: "Manrope_700Bold",
-                  color: "#EF4444",
-                  fontSize: 16,
-                  marginLeft: 8,
-                }}
-              >
-                Log Out
-              </Text>
-            </Pressable>
-          </Animated.View>
         </ScrollView>
 
         {/* Phone Edit Modal */}

@@ -31,7 +31,8 @@ export type NotificationEventType =
   | "group_created"
   | "group_joined"
   | "group_item_added"
-  | "group_submitted";
+  | "group_submitted"
+  | "group_ended";
 
 export interface NotificationEvent {
   id: string;

@@ -1,41 +1,89 @@
-import React from 'react';
-import { View, Text } from 'react-native';
-import type { RestaurantStatusResult, RestaurantOpenStatus } from '@/lib/restaurant-hours';
+import React, { useState } from 'react';
+import {
+    View,
+    Text,
+    Pressable,
+    Modal,
+    TouchableOpacity,
+    ScrollView,
+    Platform,
+} from 'react-native';
+import { X, Clock } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import type { RestaurantStatusResult, RestaurantOpenStatus, RestaurantHour } from '@/lib/restaurant-hours';
 
 interface HoursStatusBadgeProps {
     statusResult: RestaurantStatusResult | null;
+    /** Full hours array — when provided the badge becomes tappable */
+    hours?: RestaurantHour[];
     /** 'sm' = compact (for cards/lists), 'md' = default, 'lg' = hero/detail view */
     size?: 'sm' | 'md' | 'lg';
 }
 
 const STATUS_COLORS: Record<RestaurantOpenStatus, { dot: string; bg: string; text: string }> = {
-    open: { dot: '#22C55E', bg: 'rgba(34,197,94,0.12)', text: '#22C55E' },
+    open:         { dot: '#22C55E', bg: 'rgba(34,197,94,0.12)',  text: '#22C55E' },
     opening_soon: { dot: '#F59E0B', bg: 'rgba(245,158,11,0.12)', text: '#F59E0B' },
-    closed: { dot: '#EF4444', bg: 'rgba(239,68,68,0.12)', text: '#EF4444' },
+    closing_soon: { dot: '#F59E0B', bg: 'rgba(245,158,11,0.12)', text: '#F59E0B' },
+    closed:       { dot: '#EF4444', bg: 'rgba(239,68,68,0.12)',  text: '#EF4444' },
 };
 
 const FONT_SIZES = { sm: 10, md: 12, lg: 13 } as const;
-const DOT_SIZES = { sm: 5, md: 6, lg: 7 } as const;
-const H_PADDING = { sm: 6, md: 8, lg: 10 } as const;
-const V_PADDING = { sm: 2, md: 3, lg: 4 } as const;
+const DOT_SIZES  = { sm: 5,  md: 6,  lg: 7  } as const;
+const H_PADDING  = { sm: 6,  md: 8,  lg: 10 } as const;
+const V_PADDING  = { sm: 2,  md: 3,  lg: 4  } as const;
 
-/**
- * Displays a coloured pill showing whether a restaurant is Open, Closed, or Opening Soon.
- *
- * Usage:
- *   <HoursStatusBadge statusResult={statusResult} size="md" />
- */
-export function HoursStatusBadge({ statusResult, size = 'md' }: HoursStatusBadgeProps) {
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function fmtTime(t: string): string {
+    // t = 'HH:MM:SS' or 'HH:MM'
+    const [hStr, mStr] = t.split(':');
+    let h = Number(hStr);
+    const m = Number(mStr);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    if (h === 0) h = 12;
+    else if (h > 12) h -= 12;
+    return m === 0 ? `${h} ${ampm}` : `${h}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+function getTodayDow(): number {
+    // Use Intl to get CST day of week
+    try {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Chicago',
+            weekday: 'short',
+        });
+        const short = formatter.format(new Date());
+        return DAY_SHORT.indexOf(short);
+    } catch {
+        return new Date().getDay();
+    }
+}
+
+export function HoursStatusBadge({ statusResult, hours, size = 'md' }: HoursStatusBadgeProps) {
+    const [showModal, setShowModal] = useState(false);
+
     if (!statusResult) return null;
 
     const { status, label } = statusResult;
-    const colors = STATUS_COLORS[status];
+    const colors   = STATUS_COLORS[status];
     const fontSize = FONT_SIZES[size];
-    const dotSize = DOT_SIZES[size];
-    const hPad = H_PADDING[size];
-    const vPad = V_PADDING[size];
+    const dotSize  = DOT_SIZES[size];
+    const hPad     = H_PADDING[size];
+    const vPad     = V_PADDING[size];
+    const isClickable = !!(hours && hours.length > 0);
+    const todayDow = getTodayDow();
 
-    return (
+    // Build a map: dow → sorted list of (open, close) pairs
+    const schedule: Record<number, { open: string; close: string }[]> = {};
+    if (hours) {
+        for (const row of hours) {
+            if (!schedule[row.day_of_week]) schedule[row.day_of_week] = [];
+            schedule[row.day_of_week].push({ open: row.open_time, close: row.close_time });
+        }
+    }
+
+    const pill = (
         <View
             style={{
                 flexDirection: 'row',
@@ -46,9 +94,10 @@ export function HoursStatusBadge({ statusResult, size = 'md' }: HoursStatusBadge
                 paddingHorizontal: hPad,
                 paddingVertical: vPad,
                 gap: 5,
+                borderWidth: isClickable ? 1 : 0,
+                borderColor: isClickable ? colors.dot + '55' : 'transparent',
             }}
         >
-            {/* Pulsing dot — solid for now, easy to animate with Reanimated if desired */}
             <View
                 style={{
                     width: dotSize,
@@ -67,6 +116,111 @@ export function HoursStatusBadge({ statusResult, size = 'md' }: HoursStatusBadge
             >
                 {label}
             </Text>
+            {isClickable && (
+                <Clock size={fontSize - 1} color={colors.text} strokeWidth={2} />
+            )}
         </View>
+    );
+
+    return (
+        <>
+            {isClickable ? (
+                <Pressable
+                    onPress={() => {
+                        if (Platform.OS !== 'web') Haptics.selectionAsync();
+                        setShowModal(true);
+                    }}
+                    hitSlop={8}
+                >
+                    {pill}
+                </Pressable>
+            ) : pill}
+
+            {/* Hours Schedule Modal */}
+            <Modal
+                visible={showModal}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowModal(false)}
+            >
+                <TouchableOpacity
+                    activeOpacity={1}
+                    onPress={() => setShowModal(false)}
+                    style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 24 }}
+                >
+                    <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+                        <View
+                            style={{
+                                backgroundColor: '#1a1a1a',
+                                borderRadius: 20,
+                                borderWidth: 1,
+                                borderColor: '#2a2a2a',
+                                width: 300,
+                                overflow: 'hidden',
+                            }}
+                        >
+                            {/* Header */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#2a2a2a' }}>
+                                <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 16 }}>
+                                    Hours
+                                </Text>
+                                <Pressable onPress={() => setShowModal(false)} hitSlop={12}>
+                                    <X size={18} color="#666" />
+                                </Pressable>
+                            </View>
+
+                            {/* Schedule rows */}
+                            <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ paddingVertical: 8 }}>
+                                {DAY_NAMES.map((dayName, dow) => {
+                                    const isToday = dow === todayDow;
+                                    const slots   = schedule[dow];
+                                    return (
+                                        <View
+                                            key={dow}
+                                            style={{
+                                                flexDirection: 'row',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'flex-start',
+                                                paddingHorizontal: 18,
+                                                paddingVertical: 9,
+                                                backgroundColor: isToday ? 'rgba(255,153,51,0.06)' : 'transparent',
+                                                borderLeftWidth: isToday ? 2 : 0,
+                                                borderLeftColor: '#FF9933',
+                                            }}
+                                        >
+                                            <Text style={{
+                                                fontFamily: isToday ? 'Manrope_700Bold' : 'Manrope_500Medium',
+                                                color: isToday ? '#FF9933' : '#888',
+                                                fontSize: 13,
+                                                width: 90,
+                                            }}>
+                                                {dayName}
+                                            </Text>
+                                            <View style={{ alignItems: 'flex-end', flex: 1 }}>
+                                                {slots && slots.length > 0 ? (
+                                                    slots.map((s, i) => (
+                                                        <Text key={i} style={{
+                                                            fontFamily: isToday ? 'Manrope_600SemiBold' : 'Manrope_400Regular',
+                                                            color: isToday ? '#f5f5f5' : '#aaa',
+                                                            fontSize: 13,
+                                                        }}>
+                                                            {fmtTime(s.open)} – {fmtTime(s.close)}
+                                                        </Text>
+                                                    ))
+                                                ) : (
+                                                    <Text style={{ fontFamily: 'Manrope_500Medium', color: '#555', fontSize: 13 }}>
+                                                        Closed
+                                                    </Text>
+                                                )}
+                                            </View>
+                                        </View>
+                                    );
+                                })}
+                            </ScrollView>
+                        </View>
+                    </TouchableOpacity>
+                </TouchableOpacity>
+            </Modal>
+        </>
     );
 }
