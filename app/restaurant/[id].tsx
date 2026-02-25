@@ -31,6 +31,8 @@ import {
   Moon,
   Sparkles as SparklesIcon,
   Tag,
+  Truck,
+  UtensilsCrossed,
 } from "lucide-react-native";
 import Animated, {
   useAnimatedStyle,
@@ -46,6 +48,7 @@ import { MenuGridItem } from "@/components/MenuGridItem";
 import { MenuEditor } from "@/components/MenuEditor";
 import { FoodDetailModal } from "@/components/FoodDetailModal";
 import { GroupCartDrawer } from "@/components/GroupCartDrawer";
+import { CheckoutModal } from "@/components/CheckoutModal";
 import { HoursStatusBadge } from "@/components/HoursStatusBadge";
 import { RestaurantEditModal } from "@/components/RestaurantEditModal";
 import { useAdminMode } from "@/hooks/useAdminMode";
@@ -98,6 +101,10 @@ export default function RestaurantDetail() {
   const [showCart, setShowCart] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [checkoutOrderType, setCheckoutOrderType] = useState<'dine_in' | 'takeout'>('dine_in');
+  // Order type picker (shows before waitlist or takeout checkout)
+  const [showOrderTypePicker, setShowOrderTypePicker] = useState(false);
 
   // Party size + join flow
   const [showPartySizePicker, setShowPartySizePicker] = useState(false);
@@ -419,8 +426,8 @@ export default function RestaurantDetail() {
       router.push(`/waitlist/${restaurant?.id}?entry_id=${existingEntry.id}&party_size=${existingEntry.party_size}` as any);
       return;
     }
-    setCustomParty("");
-    setShowPartySizePicker(true);
+    // Show order type picker first (Takeout vs Dine In)
+    setShowOrderTypePicker(true);
   }, [existingEntry, restaurant?.id, router]);
 
   const handleConfirmJoin = useCallback(async () => {
@@ -867,32 +874,47 @@ export default function RestaurantDetail() {
               </Text>
             </View>
 
-            {/* Divider + Wait time — only show when restaurant is currently open */}
-            {(!hoursStatus || hoursStatus.status === 'open') && (
-              <>
-                <View style={{ width: 1, height: 30, backgroundColor: "#333333" }} />
-                <View className="items-center">
-                  <View className="flex-row items-center">
-                    <Clock size={14} color="#FF9933" />
-                    <WaitBadge
-                      waitTime={restaurant.waitTime}
-                      status={restaurant.waitStatus}
-                      size="sm"
-                    />
-                  </View>
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_500Medium",
-                      color: "#999999",
-                      fontSize: 11,
-                      marginTop: 2,
-                    }}
-                  >
-                    wait time
-                  </Text>
-                </View>
-              </>
-            )}
+            {/* Divider + Wait time / Closed indicator */}
+            <>
+              <View style={{ width: 1, height: 30, backgroundColor: "#333333" }} />
+              <View className="items-center">
+                {isClosed ? (
+                  <>
+                    <View style={{
+                      backgroundColor: "rgba(153,153,153,0.15)",
+                      borderRadius: 20,
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                    }}>
+                      <Text style={{
+                        fontFamily: "JetBrainsMono_600SemiBold",
+                        color: "#999999",
+                        fontSize: 11,
+                      }}>
+                        Closed
+                      </Text>
+                    </View>
+                    <Text style={{ fontFamily: "Manrope_500Medium", color: "#999999", fontSize: 11, marginTop: 2 }}>
+                      hours
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <View className="flex-row items-center">
+                      <Clock size={14} color="#FF9933" />
+                      <WaitBadge
+                        waitTime={restaurant.waitTime}
+                        status={restaurant.waitStatus}
+                        size="sm"
+                      />
+                    </View>
+                    <Text style={{ fontFamily: "Manrope_500Medium", color: "#999999", fontSize: 11, marginTop: 2 }}>
+                      wait time
+                    </Text>
+                  </>
+                )}
+              </View>
+            </>
 
             <View className="items-center">
               <View className="flex-row items-center">
@@ -1001,12 +1023,12 @@ export default function RestaurantDetail() {
             const hasOther = menu.some(m => !m.mealTimes || m.mealTimes.length === 0);
             type FilterDef = { key: MenuFilter; label: string; color: string; bg: string; border: string; icon: any };
             const FILTER_DEFS: FilterDef[] = [
-              { key: 'all',      label: 'All',      color: '#FF9933',  bg: 'rgba(255,153,51,0.15)',  border: 'rgba(255,153,51,0.4)',   icon: null },
-              { key: 'breakfast',label: 'Breakfast', color: '#F97316',  bg: 'rgba(249,115,22,0.15)',  border: 'rgba(249,115,22,0.4)',   icon: Coffee },
-              { key: 'lunch',    label: 'Lunch',     color: '#22C55E',  bg: 'rgba(34,197,94,0.15)',   border: 'rgba(34,197,94,0.4)',    icon: Sun },
-              { key: 'dinner',   label: 'Dinner',    color: '#818CF8',  bg: 'rgba(129,140,248,0.15)', border: 'rgba(129,140,248,0.4)', icon: Moon },
-              { key: 'specials', label: 'Specials',  color: '#F59E0B',  bg: 'rgba(245,158,11,0.15)',  border: 'rgba(245,158,11,0.4)',   icon: SparklesIcon },
-              { key: 'other',    label: 'Other',     color: '#94A3B8',  bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.4)', icon: Tag },
+              { key: 'all', label: 'All', color: '#FF9933', bg: 'rgba(255,153,51,0.15)', border: 'rgba(255,153,51,0.4)', icon: null },
+              { key: 'breakfast', label: 'Breakfast', color: '#F97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.4)', icon: Coffee },
+              { key: 'lunch', label: 'Lunch', color: '#22C55E', bg: 'rgba(34,197,94,0.15)', border: 'rgba(34,197,94,0.4)', icon: Sun },
+              { key: 'dinner', label: 'Dinner', color: '#818CF8', bg: 'rgba(129,140,248,0.15)', border: 'rgba(129,140,248,0.4)', icon: Moon },
+              { key: 'specials', label: 'Specials', color: '#F59E0B', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.4)', icon: SparklesIcon },
+              { key: 'other', label: 'Other', color: '#94A3B8', bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.4)', icon: Tag },
             ];
             const available = FILTER_DEFS.filter(f =>
               f.key === 'all' ||
@@ -1156,16 +1178,16 @@ export default function RestaurantDetail() {
                   elevation: isClosed || noWait || waitlistClosed ? 0 : 10,
                 }}
               >
-                <Clock size={18} color={isClosed || noWait || waitlistClosed ? "#999999" : "#0f0f0f"} strokeWidth={2.5} />
+                <Clock size={18} color={isClosed || waitlistClosed ? "#999999" : "#0f0f0f"} strokeWidth={2.5} />
                 <Text
                   style={{
                     fontFamily: "BricolageGrotesque_700Bold",
-                    color: isClosed || noWait || waitlistClosed ? "#999999" : "#0f0f0f",
+                    color: isClosed || waitlistClosed ? "#999999" : "#0f0f0f",
                     fontSize: 17,
                     marginLeft: 8,
                   }}
                 >
-                  {waitlistClosed ? "Waitlist Closed" : isClosed ? "Currently Closed" : noWait ? "Join Waitlist" : `Join Waitlist · ${restaurant.waitTime} min`}
+                  {waitlistClosed ? "Waitlist Closed" : isClosed ? "Currently Closed" : "Order"}
                 </Text>
               </Pressable>
             </Animated.View>
@@ -1188,11 +1210,118 @@ export default function RestaurantDetail() {
           onClose={() => setShowCart(false)}
           onUpdateQuantity={handleUpdateQuantity}
           isGroupMode={hasActiveGroupSession}
+          isClosed={isClosed}
+          onCheckout={() => {
+            setShowCart(false);
+            setShowCheckout(true);
+          }}
           onShare={() =>
             Alert.alert("Share Cart", "Group link copied to clipboard!")
           }
         />
       )}
+
+      <CheckoutModal
+        visible={showCheckout}
+        restaurantId={restaurant?.id ?? ""}
+        restaurantName={restaurant?.name ?? ""}
+        cartItems={cartItems}
+        initialOrderType={checkoutOrderType}
+        waitlistEntryId={existingEntry?.id}
+        onUpdateQuantity={handleUpdateQuantity}
+        onClose={() => setShowCheckout(false)}
+        onOrderPlaced={(_orderId, _orderType) => {
+          setCartItems([]);
+        }}
+      />
+
+      {/* ── Order Type Picker (Takeout vs Dine In) ── */}
+      <Modal
+        visible={showOrderTypePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowOrderTypePicker(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
+          <Pressable style={{ flex: 1 }} onPress={() => setShowOrderTypePicker(false)} />
+          <View style={{
+            backgroundColor: "#1a1a1a",
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            padding: 28,
+            paddingBottom: Platform.OS === "ios" ? 44 : 28,
+            borderWidth: 1,
+            borderColor: "#2a2a2a",
+          }}>
+            <Text style={{ fontFamily: "BricolageGrotesque_800ExtraBold", color: "#f5f5f5", fontSize: 24, marginBottom: 6 }}>
+              How would you like to order?
+            </Text>
+            <Text style={{ fontFamily: "Manrope_500Medium", color: "#777", fontSize: 14, marginBottom: 28 }}>
+              at {restaurant?.name}
+            </Text>
+
+            {/* Dine In */}
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setShowOrderTypePicker(false);
+                // Dine In → join waitlist first
+                setCustomParty("");
+                setShowPartySizePicker(true);
+              }}
+              style={{
+                backgroundColor: "rgba(255,153,51,0.1)",
+                borderRadius: 18,
+                padding: 20,
+                marginBottom: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                borderWidth: 1.5,
+                borderColor: "rgba(255,153,51,0.35)",
+              }}
+            >
+              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: "rgba(255,153,51,0.15)", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
+                <UtensilsCrossed size={22} color="#FF9933" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 18 }}>Dine In</Text>
+                <Text style={{ fontFamily: "Manrope_500Medium", color: "#777", fontSize: 13, marginTop: 2 }}>
+                  Join the waitlist · {restaurant?.waitTime != null && restaurant.waitTime > 0 ? `${restaurant.waitTime} min wait` : "No wait"}
+                </Text>
+              </View>
+            </Pressable>
+
+            {/* Takeout */}
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setShowOrderTypePicker(false);
+                setCheckoutOrderType("takeout");
+                setShowCheckout(true);
+              }}
+              style={{
+                backgroundColor: "#1a1a1a",
+                borderRadius: 18,
+                padding: 20,
+                flexDirection: "row",
+                alignItems: "center",
+                borderWidth: 1.5,
+                borderColor: "#2a2a2a",
+              }}
+            >
+              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: "#0f0f0f", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
+                <Truck size={22} color="#888" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 18 }}>Takeout</Text>
+                <Text style={{ fontFamily: "Manrope_500Medium", color: "#777", fontSize: 13, marginTop: 2 }}>
+                  Pick up your order when ready
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {/* Party Size Picker */}
       <Modal visible={showPartySizePicker} transparent animationType="fade" onRequestClose={() => setShowPartySizePicker(false)}>

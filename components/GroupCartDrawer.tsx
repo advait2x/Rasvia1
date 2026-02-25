@@ -6,13 +6,18 @@ import {
   Image,
   ScrollView,
   Dimensions,
+  Platform,
 } from "react-native";
-import { X, Minus, Plus, Users, Share2 } from "lucide-react-native";
+import { X, Minus, Plus, Users, Share2, Clock } from "lucide-react-native";
 import type { CartItem, GroupMember } from "@/data/mockData";
+import * as Haptics from "expo-haptics";
 import Animated, {
   FadeIn,
   FadeInLeft,
   SlideInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
 } from "react-native-reanimated";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -23,7 +28,9 @@ interface GroupCartDrawerProps {
   onClose: () => void;
   onUpdateQuantity: (itemId: string, delta: number) => void;
   onShare: () => void;
+  onCheckout: () => void;
   isGroupMode?: boolean;
+  isClosed?: boolean;
 }
 
 export function GroupCartDrawer({
@@ -32,60 +39,67 @@ export function GroupCartDrawer({
   onClose,
   onUpdateQuantity,
   onShare,
+  onCheckout,
   isGroupMode = false,
+  isClosed = false,
 }: GroupCartDrawerProps) {
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  const checkoutScale = useSharedValue(1);
+  const checkoutStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkoutScale.value }],
+  }));
+
+  const handleCheckout = () => {
+    if (isClosed) return;
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
+    onCheckout();
+  };
 
   return (
     <Animated.View
       entering={SlideInDown.duration(500).springify()}
-      className="absolute bottom-0 left-0 right-0 bg-rasvia-dark rounded-t-3xl"
       style={{
-        maxHeight: SCREEN_HEIGHT * 0.7,
+        position: "absolute",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: "#1a1a1a",
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        maxHeight: SCREEN_HEIGHT * 0.82,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: -8 },
-        shadowOpacity: 0.3,
+        shadowOpacity: 0.4,
         shadowRadius: 24,
         elevation: 20,
         borderTopWidth: 1,
         borderTopColor: "#2a2a2a",
       }}
     >
-      {/* Handle */}
-      <View className="items-center pt-3 pb-2">
-        <View className="w-10 h-1 rounded-full bg-rasvia-border" />
+      {/* Drag Handle */}
+      <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 8 }}>
+        <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#2a2a2a" }} />
       </View>
 
       {/* Header */}
-      <View className="flex-row items-center justify-between px-5 pb-4">
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 16 }}>
         <View>
-          <Text
-            style={{
-              fontFamily: "BricolageGrotesque_800ExtraBold",
-              color: "#f5f5f5",
-              fontSize: 22,
-            }}
-          >
+          <Text style={{ fontFamily: "BricolageGrotesque_800ExtraBold", color: "#f5f5f5", fontSize: 22 }}>
             {isGroupMode ? "Group Cart" : "Your Cart"}
           </Text>
-          <Text
-            style={{
-              fontFamily: "Manrope_500Medium",
-              color: "#999999",
-              fontSize: 13,
-              marginTop: 2,
-            }}
-          >
+          <Text style={{ fontFamily: "Manrope_500Medium", color: "#999999", fontSize: 13, marginTop: 2 }}>
             {isGroupMode
               ? `${items.length} items · ${members.length} members`
               : `${items.length} item${items.length !== 1 ? "s" : ""}`}
           </Text>
         </View>
-        <View className="flex-row items-center">
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
           {isGroupMode && (
             <Pressable
               onPress={onShare}
-              className="mr-3"
               style={{
                 backgroundColor: "#2a2a2a",
                 width: 40,
@@ -93,6 +107,7 @@ export function GroupCartDrawer({
                 borderRadius: 20,
                 alignItems: "center",
                 justifyContent: "center",
+                marginRight: 10,
               }}
             >
               <Share2 size={18} color="#FF9933" />
@@ -114,10 +129,10 @@ export function GroupCartDrawer({
         </View>
       </View>
 
-      {/* Member Avatars — only shown in group mode */}
-      {isGroupMode && (
-        <View className="px-5 pb-4">
-          <View className="flex-row items-center">
+      {/* Member Avatars — only in group mode */}
+      {isGroupMode && members.length > 0 && (
+        <View style={{ paddingHorizontal: 20, paddingBottom: 14 }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
             {members.map((member, index) => (
               <Animated.View
                 key={member.id}
@@ -146,7 +161,6 @@ export function GroupCartDrawer({
                 borderColor: "#333333",
                 alignItems: "center",
                 justifyContent: "center",
-                marginLeft: 0,
               }}
             >
               <Users size={14} color="#999999" />
@@ -155,82 +169,75 @@ export function GroupCartDrawer({
         </View>
       )}
 
-      {/* Items */}
+      {/* Items — scrollable, flex to fill remaining space */}
       <ScrollView
-        className="px-5"
-        style={{ maxHeight: SCREEN_HEIGHT * 0.35 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 8 }}
         showsVerticalScrollIndicator={false}
+        bounces
       >
         {items.map((item, index) => (
           <Animated.View
             key={item.id}
             entering={FadeIn.delay(index * 60).duration(400)}
-            className="flex-row items-center py-3"
             style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingVertical: 12,
               borderBottomWidth: index < items.length - 1 ? 1 : 0,
               borderBottomColor: "#2a2a2a",
             }}
           >
             <Image
               source={{ uri: item.image }}
-              style={{ width: 50, height: 50, borderRadius: 10 }}
+              style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: "#262626" }}
             />
-            <View className="flex-1 ml-3">
-              <View className="flex-row items-center">
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Text
-                  style={{
-                    fontFamily: "Manrope_700Bold",
-                    color: "#f5f5f5",
-                    fontSize: 14,
-                    flex: 1,
-                  }}
+                  style={{ fontFamily: "Manrope_700Bold", color: "#f5f5f5", fontSize: 14, flex: 1 }}
                   numberOfLines={1}
                 >
                   {item.name}
                 </Text>
-                <Image
-                  source={{ uri: item.addedBy.avatar }}
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: item.addedBy.color,
-                    marginLeft: 6,
-                  }}
-                />
+                {/* Only show member avatar in group mode */}
+                {isGroupMode && (
+                  <Image
+                    source={{ uri: item.addedBy.avatar }}
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      borderWidth: 1.5,
+                      borderColor: item.addedBy.color,
+                      marginLeft: 6,
+                    }}
+                  />
+                )}
               </View>
-              <View className="flex-row items-center justify-between mt-1">
-                <Text
-                  style={{
-                    fontFamily: "JetBrainsMono_600SemiBold",
-                    color: "#FF9933",
-                    fontSize: 13,
-                  }}
-                >
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
+                <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: "#FF9933", fontSize: 13 }}>
                   ${(item.price * item.quantity).toFixed(2)}
                 </Text>
-                <View className="flex-row items-center bg-rasvia-muted rounded-full">
+                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#262626", borderRadius: 20, paddingHorizontal: 4, borderWidth: 1, borderColor: "#2a2a2a" }}>
                   <Pressable
-                    onPress={() => onUpdateQuantity(item.id, -1)}
-                    className="px-2.5 py-1"
+                    onPress={() => {
+                      if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      onUpdateQuantity(item.id, -1);
+                    }}
+                    style={{ padding: 8 }}
                   >
                     <Minus size={14} color="#f5f5f5" />
                   </Pressable>
-                  <Text
-                    style={{
-                      fontFamily: "JetBrainsMono_600SemiBold",
-                      color: "#f5f5f5",
-                      fontSize: 13,
-                      minWidth: 20,
-                      textAlign: "center",
-                    }}
-                  >
+                  <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: "#f5f5f5", fontSize: 13, minWidth: 20, textAlign: "center" }}>
                     {item.quantity}
                   </Text>
                   <Pressable
-                    onPress={() => onUpdateQuantity(item.id, 1)}
-                    className="px-2.5 py-1"
+                    onPress={() => {
+                      if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      onUpdateQuantity(item.id, 1);
+                    }}
+                    style={{ padding: 8 }}
                   >
                     <Plus size={14} color="#f5f5f5" />
                   </Pressable>
@@ -242,44 +249,52 @@ export function GroupCartDrawer({
       </ScrollView>
 
       {/* Footer */}
-      <View
-        className="px-5 pt-4 pb-8"
-        style={{ borderTopWidth: 1, borderTopColor: "#2a2a2a" }}
-      >
-        <View className="flex-row items-center justify-between mb-4">
-          <Text
-            style={{
-              fontFamily: "Manrope_600SemiBold",
-              color: "#999999",
-              fontSize: 15,
-            }}
-          >
+      <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: Platform.OS === "ios" ? 36 : 24, borderTopWidth: 1, borderTopColor: "#2a2a2a" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999999", fontSize: 15 }}>
             Total
           </Text>
-          <Text
-            style={{
-              fontFamily: "JetBrainsMono_600SemiBold",
-              color: "#f5f5f5",
-              fontSize: 22,
-            }}
-          >
+          <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: "#f5f5f5", fontSize: 22 }}>
             ${total.toFixed(2)}
           </Text>
         </View>
-        <Pressable
-          className="rounded-2xl py-4 items-center"
-          style={{ backgroundColor: "#FF9933" }}
-        >
-          <Text
+
+        <Animated.View style={checkoutStyle}>
+          <Pressable
+            onPress={handleCheckout}
+            disabled={isClosed}
+            onPressIn={() => {
+              if (!isClosed) checkoutScale.value = withSpring(0.96);
+            }}
+            onPressOut={() => {
+              if (!isClosed) checkoutScale.value = withSpring(1);
+            }}
             style={{
-              fontFamily: "BricolageGrotesque_700Bold",
-              color: "#0f0f0f",
-              fontSize: 17,
+              borderRadius: 18,
+              paddingVertical: 16,
+              alignItems: "center",
+              flexDirection: "row",
+              justifyContent: "center",
+              gap: 8,
+              backgroundColor: isClosed ? "#333333" : "#FF9933",
+              opacity: isClosed ? 0.7 : 1,
+              shadowColor: isClosed ? "transparent" : "#FF9933",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: isClosed ? 0 : 0.35,
+              shadowRadius: 12,
+              elevation: isClosed ? 0 : 8,
             }}
           >
-            {isGroupMode ? "Place Group Order" : "Checkout"}
-          </Text>
-        </Pressable>
+            {isClosed && <Clock size={16} color="#999" />}
+            <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: isClosed ? "#999999" : "#0f0f0f", fontSize: 17 }}>
+              {isClosed
+                ? "Currently Closed"
+                : isGroupMode
+                ? "Place Group Order"
+                : "Checkout"}
+            </Text>
+          </Pressable>
+        </Animated.View>
       </View>
     </Animated.View>
   );

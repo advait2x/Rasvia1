@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,40 +10,49 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft, Clock, ShoppingBag } from "lucide-react-native";
+import {
+  ArrowLeft,
+  Clock,
+  ShoppingBag,
+  Truck,
+  UtensilsCrossed,
+  Leaf,
+} from "lucide-react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
+import { type SupabaseOrder, type OrderStatus, type OrderType, mapOrderToUI, type UIOrder } from "@/lib/restaurant-types";
 
-// Interfaces for our joined query
-interface GroupOrderData {
-  id: number;
-  restaurant_id: number;
-  status: string;
-  total_amount: number;
-  created_at: string;
-  restaurants: {
-    name: string;
-    image_url: string;
-  } | null;
-}
+const STATUS_COLORS: Record<OrderStatus, string> = {
+  active: "#FF9933",
+  preparing: "#F59E0B",
+  ready: "#22C55E",
+  served: "#818CF8",
+  completed: "#10B981",
+  cancelled: "#EF4444",
+};
 
-interface PartySessionData {
-  id: string;
-  host_user_id: string;
-  created_at: string;
-  group_orders: GroupOrderData[];
-}
+const ORDER_TYPE_ICONS: Record<OrderType, any> = {
+  dine_in: UtensilsCrossed,
+  pre_order: Clock,
+  takeout: Truck,
+};
+
+const ORDER_TYPE_LABELS: Record<OrderType, string> = {
+  dine_in: "Dine In",
+  pre_order: "Pre-Order",
+  takeout: "Takeout",
+};
 
 export default function MyOrdersScreen() {
   const router = useRouter();
   const { session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [orders, setOrders] = useState<GroupOrderData[]>([]);
+  const [orders, setOrders] = useState<UIOrder[]>([]);
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     if (!session?.user?.id) {
       setLoading(false);
       setRefreshing(false);
@@ -51,98 +60,63 @@ export default function MyOrdersScreen() {
     }
 
     try {
-      // Query party_sessions where the user is the host,
-      // and join the associated group_orders and restaurant info.
       const { data, error } = await supabase
-        .from('party_sessions')
+        .from("orders")
         .select(`
-          id,
-          host_user_id,
-          created_at,
-          group_orders (
-            id,
-            restaurant_id,
-            status,
-            total_amount,
-            created_at,
-            restaurants (
-              name,
-              image_url
-            )
-          )
+          *,
+          restaurants ( name, image_url ),
+          order_items ( * )
         `)
-        .eq('host_user_id', session.user.id)
-        .order('created_at', { ascending: false });
+        .eq("created_by", session.user.id)
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      // Flatten the nested structure into a list of orders
-      const allOrders: GroupOrderData[] = [];
-      if (data) {
-        data.forEach((session: any) => {
-          if (session.group_orders && Array.isArray(session.group_orders)) {
-            session.group_orders.forEach((order: any) => {
-                // Ensure it's not a draft
-                if (order.status !== 'draft') {
-                    allOrders.push(order);
-                }
-            });
-          }
-        });
-      }
-
-      // Sort by creation date descending
-      allOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      setOrders(allOrders);
+      const mapped = (data as SupabaseOrder[]).map(mapOrderToUI);
+      setOrders(mapped);
     } catch (e) {
       console.error("Error fetching orders:", e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [session?.user?.id]);
 
   useEffect(() => {
     fetchOrders();
-  }, [session]);
+  }, [fetchOrders]);
 
-  const onRefresh = React.useCallback(() => {
+  const onRefresh = useCallback(() => {
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setRefreshing(true);
     fetchOrders();
-  }, [session]);
+  }, [fetchOrders]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
-      year: "numeric"
+      year: "numeric",
     });
   };
 
-  const getStatusColor = (status: string) => {
-    switch(status) {
-        case 'completed': return '#10B981'; // Green
-        case 'active': return '#FF9933'; // Orange
-        case 'cancelled': return '#EF4444'; // Red
-        default: return '#999999'; // Grey
-    }
-  }
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  };
 
   return (
-    <View className="flex-1 bg-rasvia-black">
-      <SafeAreaView className="flex-1" edges={["top"]}>
+    <View style={{ flex: 1, backgroundColor: "#0f0f0f" }}>
+      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         {/* Header */}
         <Animated.View
           entering={FadeIn.duration(400)}
-          className="flex-row items-center px-5 pt-2 pb-4"
+          style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16 }}
         >
           <Pressable
             onPress={() => {
-              if (Platform.OS !== "web") {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }
+              if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.back();
             }}
             style={{
@@ -172,7 +146,7 @@ export default function MyOrdersScreen() {
         </Animated.View>
 
         {loading ? (
-          <View className="flex-1 items-center justify-center">
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
             <ActivityIndicator color="#FF9933" size="large" />
           </View>
         ) : (
@@ -190,116 +164,111 @@ export default function MyOrdersScreen() {
             {orders.length === 0 ? (
               <Animated.View
                 entering={FadeInDown.delay(100).duration(500)}
-                style={{
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginTop: 60,
-                }}
+                style={{ alignItems: "center", justifyContent: "center", marginTop: 60 }}
               >
                 <View style={{
-                    width: 80, height: 80, borderRadius: 40, backgroundColor: "#1a1a1a", 
-                    alignItems: "center", justifyContent: "center", marginBottom: 16,
-                    borderWidth: 1, borderColor: "#2a2a2a"
+                  width: 80, height: 80, borderRadius: 40, backgroundColor: "#1a1a1a",
+                  alignItems: "center", justifyContent: "center", marginBottom: 16,
+                  borderWidth: 1, borderColor: "#2a2a2a",
                 }}>
-                    <ShoppingBag size={32} color="#666" />
+                  <ShoppingBag size={32} color="#666" />
                 </View>
-                <Text
-                  style={{
-                    fontFamily: "BricolageGrotesque_700Bold",
-                    color: "#f5f5f5",
-                    fontSize: 20,
-                    marginBottom: 8,
-                  }}
-                >
-                  No past orders
+                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 20, marginBottom: 8 }}>
+                  No orders yet
                 </Text>
-                <Text
-                  style={{
-                    fontFamily: "Manrope_500Medium",
-                    color: "#999",
-                    fontSize: 15,
-                    textAlign: "center",
-                  }}
-                >
-                  When you host a group order, your history will appear here.
+                <Text style={{ fontFamily: "Manrope_500Medium", color: "#999", fontSize: 15, textAlign: "center" }}>
+                  Your dine-in, takeout, and pre-orders will appear here.
                 </Text>
               </Animated.View>
             ) : (
-              orders.map((order, index) => (
-                <Animated.View
-                  key={order.id}
-                  entering={FadeInDown.delay(100 + index * 50).duration(500)}
-                >
-                  <Pressable
-                    onPress={() => {
-                        if (Platform.OS !== "web") Haptics.selectionAsync();
-                        // Potentially navigate to a detailed receipt view in the future
-                    }}
-                    style={{
-                      flexDirection: "row",
-                      backgroundColor: "#1a1a1a",
-                      borderRadius: 16,
-                      borderWidth: 1,
-                      borderColor: "#2a2a2a",
-                      padding: 16,
-                      marginBottom: 16,
-                      alignItems: "center",
-                    }}
+              orders.map((order, index) => {
+                const statusColor = STATUS_COLORS[order.status];
+                const TypeIcon = ORDER_TYPE_ICONS[order.orderType];
+                return (
+                  <Animated.View
+                    key={order.id}
+                    entering={FadeInDown.delay(80 + index * 50).duration(500)}
                   >
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontFamily: "BricolageGrotesque_700Bold",
-                          color: "#f5f5f5",
-                          fontSize: 18,
-                          marginBottom: 4,
-                        }}
-                        numberOfLines={1}
-                      >
-                        {order.restaurants?.name || "Unknown Restaurant"}
-                      </Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-                        <Clock size={12} color="#999" />
-                        <Text
-                          style={{
-                            fontFamily: "Manrope_500Medium",
-                            color: "#999",
-                            fontSize: 13,
-                            marginLeft: 4,
-                          }}
-                        >
-                          {formatDate(order.created_at)}
-                        </Text>
-                      </View>
-                      
-                      <View style={{ flexDirection: "row", alignItems: "center" }}>
-                          <View style={{ 
-                              backgroundColor: `${getStatusColor(order.status)}20`, 
-                              paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
-                              borderWidth: 1, borderColor: `${getStatusColor(order.status)}50` 
-                           }}>
-                            <Text style={{ 
-                                fontFamily: "Manrope_600SemiBold", 
-                                color: getStatusColor(order.status), 
-                                fontSize: 11, textTransform: "uppercase" 
-                            }}>
-                                {order.status}
+                    <Pressable
+                      onPress={() => {
+                        if (Platform.OS !== "web") Haptics.selectionAsync();
+                      }}
+                      style={{
+                        backgroundColor: "#1a1a1a",
+                        borderRadius: 18,
+                        borderWidth: 1,
+                        borderColor: "#2a2a2a",
+                        padding: 16,
+                        marginBottom: 14,
+                      }}
+                    >
+                      {/* Header row */}
+                      <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 18, marginBottom: 3 }}
+                            numberOfLines={1}
+                          >
+                            {order.restaurantName}
+                          </Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Clock size={11} color="#777" />
+                            <Text style={{ fontFamily: "Manrope_500Medium", color: "#777", fontSize: 12 }}>
+                              {formatDate(order.createdAt)} · {formatTime(order.createdAt)}
+                              {order.customerName ? ` · ${order.customerName}` : ""}
                             </Text>
                           </View>
+                        </View>
+                        <View style={{ alignItems: "flex-end" }}>
+                          <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 18 }}>
+                            ${order.subtotal.toFixed(2)}
+                          </Text>
+                          {order.tipAmount > 0 && (
+                            <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11 }}>
+                              +${order.tipAmount.toFixed(2)} tip
+                            </Text>
+                          )}
+                        </View>
                       </View>
-                      
-                    </View>
-                    <View style={{ alignItems: "flex-end" }}>
-                        <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 18 }}>
-                            ${order.total_amount ? order.total_amount.toFixed(2) : "0.00"}
-                        </Text>
-                        <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 12, marginTop: 4 }}>
-                            Order #{order.id}
-                        </Text>
-                    </View>
-                  </Pressable>
-                </Animated.View>
-              ))
+
+                      {/* Items summary */}
+                      <Text
+                        style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 13, marginBottom: 10 }}
+                        numberOfLines={2}
+                      >
+                        {order.items.map(i => `${i.quantity}× ${i.name}`).join(", ")}
+                      </Text>
+
+                      {/* Footer: type + status */}
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#0f0f0f", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: "#2a2a2a" }}>
+                          <TypeIcon size={12} color="#888" />
+                          <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#888", fontSize: 12 }}>
+                            {ORDER_TYPE_LABELS[order.orderType]}
+                          </Text>
+                          {order.tableNumber !== "—" && (
+                            <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11 }}>
+                              · Table {order.tableNumber}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={{
+                          backgroundColor: `${statusColor}20`,
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: `${statusColor}50`,
+                        }}>
+                          <Text style={{ fontFamily: "Manrope_700Bold", color: statusColor, fontSize: 11, textTransform: "uppercase" }}>
+                            {order.status}
+                          </Text>
+                        </View>
+                      </View>
+                    </Pressable>
+                  </Animated.View>
+                );
+              })
             )}
           </ScrollView>
         )}

@@ -245,3 +245,112 @@ export function parseFavorites(data: any): number[] {
     }
     return [];
 }
+
+// ==========================================
+// 5. ORDERS
+// ==========================================
+
+export type OrderType = 'dine_in' | 'pre_order' | 'takeout';
+export type OrderStatus = 'active' | 'preparing' | 'ready' | 'served' | 'completed' | 'cancelled';
+export type MealPeriod = 'breakfast' | 'lunch' | 'dinner' | 'special';
+
+export interface SupabaseOrder {
+    id: number;
+    restaurant_id: number;
+    table_number: string | null;
+    party_size: number;
+    order_type: OrderType;
+    status: OrderStatus;
+    meal_period: MealPeriod;
+    subtotal: number;
+    tip_amount: number;
+    tip_percent: number | null;
+    payment_method: string;
+    notes: string | null;
+    waitlist_entry_id: string | null;
+    party_session_id: string | null;
+    customer_name: string | null;
+    created_at: string;
+    closed_at: string | null;
+    created_by: string | null;
+    restaurants?: { name: string; image_url: string | null } | null;
+    order_items?: SupabaseOrderItem[];
+}
+
+export interface SupabaseOrderItem {
+    id: number;
+    order_id: number;
+    menu_item_id: number | null;
+    name: string;
+    price: number;
+    quantity: number;
+    is_vegetarian: boolean;
+    notes: string | null;
+    created_at: string;
+}
+
+export interface UIOrder {
+    id: string;
+    restaurantId: string;
+    restaurantName: string;
+    tableNumber: string;
+    partySize: number;
+    orderType: OrderType;
+    status: OrderStatus;
+    mealPeriod: MealPeriod;
+    subtotal: number;
+    tipAmount: number;
+    tipPercent: number | null;
+    paymentMethod: string;
+    customerName: string | null;
+    notes: string;
+    items: UIOrderItem[];
+    createdAt: string;
+    closedAt: string | null;
+    elapsedMinutes: number;
+}
+
+export interface UIOrderItem {
+    id: string;
+    name: string;
+    price: number;
+    quantity: number;
+    isVegetarian: boolean;
+    notes: string;
+    lineTotal: number;
+}
+
+export function mapOrderToUI(order: SupabaseOrder): UIOrder {
+    const items: UIOrderItem[] = (order.order_items || []).map(item => ({
+        id: item.id.toString(),
+        name: item.name,
+        price: Number(item.price),
+        quantity: item.quantity,
+        isVegetarian: item.is_vegetarian,
+        notes: item.notes || '',
+        lineTotal: Number(item.price) * item.quantity,
+    }));
+    const now = new Date();
+    const created = new Date(order.created_at);
+    const elapsedMinutes = Math.floor((now.getTime() - created.getTime()) / 60000);
+    return {
+        id: order.id.toString(),
+        restaurantId: order.restaurant_id.toString(),
+        restaurantName: order.restaurants?.name || 'Restaurant',
+        tableNumber: order.table_number || '—',
+        partySize: order.party_size,
+        orderType: order.order_type,
+        status: order.status,
+        mealPeriod: order.meal_period,
+        subtotal: Number(order.subtotal),
+        tipAmount: Number(order.tip_amount),
+        tipPercent: order.tip_percent ? Number(order.tip_percent) : null,
+        paymentMethod: order.payment_method,
+        customerName: order.customer_name || null,
+        notes: order.notes || '',
+        items,
+        createdAt: order.created_at,
+        closedAt: order.closed_at,
+        elapsedMinutes,
+    };
+}

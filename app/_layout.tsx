@@ -168,6 +168,10 @@ function AuthGate() {
         options={{ headerShown: false, animation: "slide_from_bottom" }}
       />
       <Stack.Screen
+        name="admin-orders"
+        options={{ headerShown: false, animation: "slide_from_bottom" }}
+      />
+      <Stack.Screen
         name="join/[id]"
         options={{ headerShown: false, animation: "slide_from_bottom" }}
       />

@@ -47,7 +47,8 @@ import { useLocation } from "@/lib/location-context";
 import { useAuth } from "@/lib/auth-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
-import type { MenuItem } from "@/data/mockData";
+import type { MenuItem, CartItem } from "@/data/mockData";
+import { CheckoutModal } from "@/components/CheckoutModal";
 
 export default function WaitlistStatus() {
   const { id, entry_id, party_size } = useLocalSearchParams<{ id: string; entry_id?: string; party_size?: string }>();
@@ -341,6 +342,8 @@ export default function WaitlistStatus() {
   }, []);
 
   const [creatingParty, setCreatingParty] = useState(false);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [showPreOrderCheckout, setShowPreOrderCheckout] = useState(false);
 
   const handleStartGroupOrder = async () => {
     if (Platform.OS !== "web") {
@@ -702,6 +705,38 @@ export default function WaitlistStatus() {
               </View>
             </View>
 
+            {/* Pre-Order Button */}
+            {entry_id && (
+              <Animated.View entering={FadeInDown.delay(200).duration(400)} style={{ marginTop: 8 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    // Navigate back to restaurant page to browse menu and checkout
+                    // The checkout will detect the existing waitlist entry and save as pre_order
+                    router.push(`/restaurant/${id}` as any);
+                  }}
+                  className="flex-row items-center justify-center py-3 rounded-2xl"
+                  style={{
+                    backgroundColor: "rgba(255,153,51,0.12)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,153,51,0.3)",
+                  }}
+                >
+                  <UtensilsCrossed size={16} color="#FF9933" />
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_700Bold",
+                      color: "#FF9933",
+                      fontSize: 14,
+                      marginLeft: 8,
+                    }}
+                  >
+                    Pre-Order from Menu →
+                  </Text>
+                </TouchableOpacity>
+              </Animated.View>
+            )}
+
             {/* Share & Start Group Order Button */}
             <TouchableOpacity
               onPress={handleStartGroupOrder}
@@ -1005,6 +1040,28 @@ export default function WaitlistStatus() {
           </Animated.View>
         </View>
       </Modal>
+
+      {/* Pre-Order Checkout Modal */}
+      <CheckoutModal
+        visible={showPreOrderCheckout}
+        restaurantId={id ?? ""}
+        restaurantName={restaurant?.name ?? ""}
+        cartItems={cartItems}
+        waitlistEntryId={entry_id}
+        onUpdateQuantity={(itemId, delta) => {
+          setCartItems((prev) => {
+            const updated = prev.map((ci) =>
+              ci.id === itemId ? { ...ci, quantity: Math.max(0, ci.quantity + delta) } : ci
+            );
+            return updated.filter((ci) => ci.quantity > 0);
+          });
+        }}
+        onClose={() => setShowPreOrderCheckout(false)}
+        onOrderPlaced={() => {
+          setCartItems([]);
+          setShowPreOrderCheckout(false);
+        }}
+      />
     </View>
   );
 }
