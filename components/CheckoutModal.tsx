@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
     View,
     Text,
@@ -43,6 +43,10 @@ interface CheckoutModalProps {
     onUpdateQuantity: (itemId: string, delta: number) => void;
     /** Pre-select the order type (e.g. 'takeout' from the picker) */
     initialOrderType?: 'dine_in' | 'takeout';
+    /** Lock the order type — show read-only pill instead of toggle */
+    lockOrderType?: boolean;
+    /** Callback to close modal so user can add items from the menu */
+    onAddMoreItems?: () => void;
     /** If customer is already on the waitlist — makes it a pre_order silently */
     waitlistEntryId?: string;
     /** If customer is already seated */
@@ -52,8 +56,8 @@ interface CheckoutModalProps {
 
 const MEAL_PERIODS: { key: MealPeriod; label: string; icon: any; color: string }[] = [
     { key: "breakfast", label: "Breakfast", icon: Coffee, color: "#F97316" },
-    { key: "lunch",     label: "Lunch",     icon: Sun,    color: "#22C55E" },
-    { key: "dinner",   label: "Dinner",     icon: Moon,   color: "#818CF8" },
+    { key: "lunch", label: "Lunch", icon: Sun, color: "#22C55E" },
+    { key: "dinner", label: "Dinner", icon: Moon, color: "#818CF8" },
 ];
 
 const S = {
@@ -98,6 +102,8 @@ export function CheckoutModal({
     onOrderPlaced,
     onUpdateQuantity,
     initialOrderType,
+    lockOrderType,
+    onAddMoreItems,
     waitlistEntryId,
     isSeated = false,
     existingOrderId,
@@ -110,6 +116,16 @@ export function CheckoutModal({
         : (initialOrderType ?? "dine_in");
 
     const [orderType, setOrderType] = useState<OrderType>(defaultType);
+
+    // Sync orderType when the modal opens or initialOrderType changes
+    useEffect(() => {
+        if (visible) {
+            const newType: OrderType = waitlistEntryId
+                ? "pre_order"
+                : (initialOrderType ?? "dine_in");
+            setOrderType(newType);
+        }
+    }, [visible, initialOrderType, waitlistEntryId]);
     const [customerName, setCustomerName] = useState(
         session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || ""
     );
@@ -188,7 +204,7 @@ export function CheckoutModal({
                     .from("orders")
                     .insert({
                         restaurant_id: Number(restaurantId),
-                        table_number: tableNumber.trim() || null,
+                        table_number: null,
                         party_size: 1,
                         order_type: orderType,
                         status:
@@ -332,34 +348,49 @@ export function CheckoutModal({
                             {!existingOrderId && (
                                 <Animated.View entering={FadeInDown.delay(50).duration(400)} style={S.card}>
                                     <Text style={S.label}>Order Type</Text>
-                                    <View style={{ flexDirection: "row" }}>
-                                        {orderTypeOptions.map(({ key, label, icon: Icon, desc }) => {
-                                            const active = orderType === key;
-                                            return (
-                                                <Pressable
-                                                    key={key}
-                                                    onPress={() => {
-                                                        if (Platform.OS !== "web") Haptics.selectionAsync();
-                                                        setOrderType(key);
-                                                    }}
-                                                    style={{
-                                                        flex: 1,
-                                                        marginRight: key !== "takeout" ? 8 : 0,
-                                                        backgroundColor: active ? "rgba(255,153,51,0.12)" : "#0f0f0f",
-                                                        borderRadius: 14,
-                                                        borderWidth: 1.5,
-                                                        borderColor: active ? "#FF9933" : "#2a2a2a",
-                                                        padding: 12,
-                                                        alignItems: "center",
-                                                    }}
-                                                >
-                                                    <Icon size={20} color={active ? "#FF9933" : "#666"} />
-                                                    <Text style={{ fontFamily: "Manrope_700Bold", color: active ? "#FF9933" : "#f5f5f5", fontSize: 12, marginTop: 6 }}>{label}</Text>
-                                                    <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 10, marginTop: 2, textAlign: "center" }}>{desc}</Text>
-                                                </Pressable>
-                                            );
-                                        })}
-                                    </View>
+                                    {lockOrderType ? (
+                                        /* Read-only pill when order type was pre-selected */
+                                        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,153,51,0.12)", borderRadius: 14, padding: 14, borderWidth: 1.5, borderColor: "#FF9933" }}>
+                                            {orderType === "takeout" ? <Truck size={20} color="#FF9933" /> : <UtensilsCrossed size={20} color="#FF9933" />}
+                                            <View style={{ marginLeft: 12 }}>
+                                                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 16 }}>
+                                                    {orderType === "takeout" ? "Takeout" : "Dine In"}
+                                                </Text>
+                                                <Text style={{ fontFamily: "Manrope_500Medium", color: "#FF9933", fontSize: 12, marginTop: 2 }}>
+                                                    {orderType === "takeout" ? "Ready for pickup" : "At your table"}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    ) : (
+                                        <View style={{ flexDirection: "row" }}>
+                                            {orderTypeOptions.map(({ key, label, icon: Icon, desc }) => {
+                                                const active = orderType === key;
+                                                return (
+                                                    <Pressable
+                                                        key={key}
+                                                        onPress={() => {
+                                                            if (Platform.OS !== "web") Haptics.selectionAsync();
+                                                            setOrderType(key);
+                                                        }}
+                                                        style={{
+                                                            flex: 1,
+                                                            marginRight: key !== "takeout" ? 8 : 0,
+                                                            backgroundColor: active ? "rgba(255,153,51,0.12)" : "#0f0f0f",
+                                                            borderRadius: 14,
+                                                            borderWidth: 1.5,
+                                                            borderColor: active ? "#FF9933" : "#2a2a2a",
+                                                            padding: 12,
+                                                            alignItems: "center",
+                                                        }}
+                                                    >
+                                                        <Icon size={20} color={active ? "#FF9933" : "#666"} />
+                                                        <Text style={{ fontFamily: "Manrope_700Bold", color: active ? "#FF9933" : "#f5f5f5", fontSize: 12, marginTop: 6 }}>{label}</Text>
+                                                        <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 10, marginTop: 2, textAlign: "center" }}>{desc}</Text>
+                                                    </Pressable>
+                                                );
+                                            })}
+                                        </View>
+                                    )}
                                 </Animated.View>
                             )}
 
@@ -414,68 +445,56 @@ export function CheckoutModal({
                                 </Animated.View>
                             )}
 
-                            {/* ── Table number (dine-in only) ── */}
-                            {(orderType === "dine_in" || isSeated) && !existingOrderId && (
-                                <Animated.View entering={FadeInDown.delay(100).duration(400)} style={S.card}>
-                                    <Text style={S.label}>Table Number (optional)</Text>
-                                    <TextInput
-                                        value={tableNumber}
-                                        onChangeText={setTableNumber}
-                                        placeholder="e.g. 12"
-                                        placeholderTextColor="#555"
-                                        keyboardType="default"
-                                        style={{
-                                            backgroundColor: "#0f0f0f",
-                                            borderRadius: 12,
-                                            borderWidth: 1,
-                                            borderColor: tableNumber ? "#FF9933" : "#2a2a2a",
-                                            paddingHorizontal: 14,
-                                            paddingVertical: 12,
-                                            color: "#f5f5f5",
-                                            fontFamily: "Manrope_600SemiBold",
-                                            fontSize: 15,
-                                        }}
-                                    />
-                                </Animated.View>
-                            )}
+
 
                             {/* ── Cart Items ── */}
                             <Animated.View entering={FadeInDown.delay(120).duration(400)} style={S.card}>
                                 <Text style={S.label}>Your Items ({cartItems.reduce((s, i) => s + i.quantity, 0)})</Text>
-                                {cartItems.map((item, idx) => (
-                                    <View
-                                        key={item.id}
-                                        style={{
-                                            flexDirection: "row",
-                                            alignItems: "center",
-                                            paddingVertical: 10,
-                                            borderBottomWidth: idx < cartItems.length - 1 ? 1 : 0,
-                                            borderBottomColor: "#222",
-                                        }}
+                                {cartItems.length === 0 ? (
+                                    <Pressable
+                                        onPress={() => { if (Platform.OS !== "web") Haptics.selectionAsync(); onAddMoreItems?.(); }}
+                                        style={{ alignItems: "center", paddingVertical: 20, backgroundColor: "#0f0f0f", borderRadius: 12, borderWidth: 1, borderColor: "#2a2a2a" }}
                                     >
-                                        <View style={{ flex: 1 }}>
-                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                                <Text style={{ fontFamily: "Manrope_700Bold", color: "#f5f5f5", fontSize: 14, flex: 1 }} numberOfLines={1}>
-                                                    {item.name}
+                                        <Plus size={20} color="#FF9933" />
+                                        <Text style={{ fontFamily: "Manrope_700Bold", color: "#FF9933", fontSize: 14, marginTop: 8 }}>Browse Menu & Add Items</Text>
+                                        <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 12, marginTop: 4 }}>Your cart is empty</Text>
+                                    </Pressable>
+                                ) : (
+                                    cartItems.map((item, idx) => (
+                                        <View
+                                            key={item.id}
+                                            style={{
+                                                flexDirection: "row",
+                                                alignItems: "center",
+                                                paddingVertical: 10,
+                                                borderBottomWidth: idx < cartItems.length - 1 ? 1 : 0,
+                                                borderBottomColor: "#222",
+                                            }}
+                                        >
+                                            <View style={{ flex: 1 }}>
+                                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                                    <Text style={{ fontFamily: "Manrope_700Bold", color: "#f5f5f5", fontSize: 14, flex: 1 }} numberOfLines={1}>
+                                                        {item.name}
+                                                    </Text>
+                                                    {item.isVegetarian && <Leaf size={12} color="#22C55E" />}
+                                                </View>
+                                                <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: "#FF9933", fontSize: 13, marginTop: 2 }}>
+                                                    ${(item.price * item.quantity).toFixed(2)}
                                                 </Text>
-                                                {item.isVegetarian && <Leaf size={12} color="#22C55E" />}
                                             </View>
-                                            <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: "#FF9933", fontSize: 13, marginTop: 2 }}>
-                                                ${(item.price * item.quantity).toFixed(2)}
-                                            </Text>
+                                            {/* Quantity controls */}
+                                            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#262626", borderRadius: 20, paddingHorizontal: 4, borderWidth: 1, borderColor: "#333" }}>
+                                                <Pressable onPress={() => { if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onUpdateQuantity(item.id, -1); }} style={{ padding: 7 }}>
+                                                    <Minus size={13} color="#f5f5f5" />
+                                                </Pressable>
+                                                <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: "#f5f5f5", fontSize: 13, minWidth: 22, textAlign: "center" }}>{item.quantity}</Text>
+                                                <Pressable onPress={() => { if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onUpdateQuantity(item.id, 1); }} style={{ padding: 7 }}>
+                                                    <Plus size={13} color="#f5f5f5" />
+                                                </Pressable>
+                                            </View>
                                         </View>
-                                        {/* Quantity controls */}
-                                        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#262626", borderRadius: 20, paddingHorizontal: 4, borderWidth: 1, borderColor: "#333" }}>
-                                            <Pressable onPress={() => { if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onUpdateQuantity(item.id, -1); }} style={{ padding: 7 }}>
-                                                <Minus size={13} color="#f5f5f5" />
-                                            </Pressable>
-                                            <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: "#f5f5f5", fontSize: 13, minWidth: 22, textAlign: "center" }}>{item.quantity}</Text>
-                                            <Pressable onPress={() => { if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onUpdateQuantity(item.id, 1); }} style={{ padding: 7 }}>
-                                                <Plus size={13} color="#f5f5f5" />
-                                            </Pressable>
-                                        </View>
-                                    </View>
-                                ))}
+                                    ))
+                                )}
                             </Animated.View>
 
                             {/* ── Notes ── */}

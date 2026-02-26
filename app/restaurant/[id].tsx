@@ -103,6 +103,7 @@ export default function RestaurantDetail() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
   const [checkoutOrderType, setCheckoutOrderType] = useState<'dine_in' | 'takeout'>('dine_in');
+  const [lockCheckoutOrderType, setLockCheckoutOrderType] = useState(false);
   // Order type picker (shows before waitlist or takeout checkout)
   const [showOrderTypePicker, setShowOrderTypePicker] = useState(false);
 
@@ -1221,6 +1222,7 @@ export default function RestaurantDetail() {
           isClosed={isClosed}
           onCheckout={() => {
             setShowCart(false);
+            setLockCheckoutOrderType(false);
             setShowCheckout(true);
           }}
           onShare={() =>
@@ -1235,11 +1237,22 @@ export default function RestaurantDetail() {
         restaurantName={restaurant?.name ?? ""}
         cartItems={cartItems}
         initialOrderType={checkoutOrderType}
+        lockOrderType={lockCheckoutOrderType}
+        onAddMoreItems={() => setShowCheckout(false)}
         waitlistEntryId={existingEntry?.id}
         onUpdateQuantity={handleUpdateQuantity}
         onClose={() => setShowCheckout(false)}
-        onOrderPlaced={(_orderId, _orderType) => {
+        onOrderPlaced={(orderId, orderType) => {
           setCartItems([]);
+          setShowCheckout(false);
+          if (orderType === 'dine_in') {
+            if (existingEntry) {
+              router.push(`/waitlist/${restaurant?.id}?entry_id=${existingEntry.id}&party_size=${existingEntry.party_size}` as any);
+            } else {
+              setCustomParty("");
+              setShowPartySizePicker(true);
+            }
+          }
         }}
       />
 
@@ -1305,6 +1318,7 @@ export default function RestaurantDetail() {
                 if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setShowOrderTypePicker(false);
                 setCheckoutOrderType("takeout");
+                setLockCheckoutOrderType(true);
                 setShowCheckout(true);
               }}
               style={{

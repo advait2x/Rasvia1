@@ -45,7 +45,6 @@
     "lightningcss": "^1.29.2",
     "lucide-react-native": "^0.479.0",
     "nativewind": "^4.1.23",
-    "ngrok": "^5.0.0-beta.2",
     "postcss": "^8.5.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",

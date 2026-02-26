@@ -22,6 +22,7 @@ import { supabase } from "@/lib/supabase";
 import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant, haversineDistance } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
 import { useAdminMode } from "@/hooks/useAdminMode";
+import { getRestaurantStatus } from "@/lib/restaurant-hours";
 
 // --- Trie-based prefix search for efficient matching ---
 
@@ -104,15 +105,37 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   useEffect(() => {
     async function fetchRestaurants() {
       try {
-        const { data, error } = await supabase
-          .from('restaurants')
-          .select('*')
-          .order('name', { ascending: true });
+        // Fetch restaurants and hours in parallel
+        const [restaurantRes, hoursRes] = await Promise.all([
+          supabase.from('restaurants').select('*').order('name', { ascending: true }),
+          supabase.from('restaurant_hours').select('*').order('day_of_week').order('open_time'),
+        ]);
 
-        if (error) throw error;
-        if (data) {
-          const uiRestaurants = data
-            .map((r: SupabaseRestaurant) => mapSupabaseToUI(r, userCoords))
+        if (restaurantRes.error) throw restaurantRes.error;
+
+        // Build a map of restaurant_id -> hours rows
+        const hoursMap = new Map<number, any[]>();
+        if (hoursRes.data) {
+          for (const h of hoursRes.data) {
+            if (!hoursMap.has(h.restaurant_id)) hoursMap.set(h.restaurant_id, []);
+            hoursMap.get(h.restaurant_id)!.push(h);
+          }
+        }
+
+        if (restaurantRes.data) {
+          const uiRestaurants = restaurantRes.data
+            .map((r: SupabaseRestaurant) => {
+              const ui = mapSupabaseToUI(r, userCoords);
+              // Check hours-based closed status
+              const rHours = hoursMap.get(r.id);
+              if (rHours && rHours.length > 0) {
+                const status = getRestaurantStatus(rHours);
+                if (status.status === 'closed') {
+                  ui.waitStatus = 'darkgrey';
+                }
+              }
+              return ui;
+            })
             .filter((r) => isAdmin || r.isEnabled);
           setRestaurants(uiRestaurants);
           setRestaurantTrie(buildTrie(uiRestaurants));
@@ -524,8 +547,14 @@ function SearchResultCard({
                 in queue
               </Text>
             </View>
-            {/* Hide wait time when restaurant is marked closed */}
-            {restaurant.waitStatus !== "darkgrey" && (
+            {restaurant.waitStatus === "darkgrey" ? (
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Clock size={12} color="#999999" />
+                <View style={{ backgroundColor: "rgba(153,153,153,0.15)", borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2, marginLeft: 4 }}>
+                  <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: "#999999", fontSize: 10 }}>Closed</Text>
+                </View>
+              </View>
+            ) : (
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Clock size={12} color="#FF9933" />
                 <WaitBadge
