@@ -55,6 +55,12 @@ import { useAuth } from "@/lib/auth-context";
 import { useLocation } from "@/lib/location-context";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { setDebugTime, getDebugTime } from "@/lib/restaurant-hours";
+import {
+  isPushEnabled,
+  enablePushNotifications,
+  disablePushNotifications,
+  getPushPermissionStatus,
+} from "@/lib/push-notifications";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -128,7 +134,8 @@ export default function ProfileSettingsScreen() {
   const [tempLastInitial, setTempLastInitial] = useState("");
   const [editingPhone, setEditingPhone] = useState(false);
   const [tempPhone, setTempPhone] = useState("");
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [pushPermissionDenied, setPushPermissionDenied] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
   // Admin tab state (only used when isAdmin)
@@ -197,6 +204,10 @@ export default function ProfileSettingsScreen() {
           setLiveLocationEnabled(isLive);
           setOrigLiveLocationEnabled(isLive);
         }
+
+        // Check actual push notification status
+        const pushStatus = await isPushEnabled();
+        setNotificationsEnabled(pushStatus);
 
         if (!error && data) {
           const c = data.location_city || "Frisco, TX";
@@ -1226,21 +1237,44 @@ export default function ProfileSettingsScreen() {
               >
                 <Bell size={20} color="#FF9933" />
               </View>
-              <Text
-                style={{
-                  flex: 1,
-                  fontFamily: "Manrope_600SemiBold",
-                  color: "#f5f5f5",
-                  fontSize: 15,
-                }}
-              >
-                Notifications
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontFamily: "Manrope_600SemiBold",
+                    color: "#f5f5f5",
+                    fontSize: 15,
+                  }}
+                >
+                  Notifications
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Manrope_500Medium",
+                    color: notificationsEnabled ? "#22C55E" : "#EF4444",
+                    fontSize: 11,
+                    marginTop: 2,
+                  }}
+                >
+                  {notificationsEnabled ? "Active" : "Inactive"}
+                </Text>
+              </View>
               <Switch
                 value={notificationsEnabled}
-                onValueChange={(val) => {
-                  setNotificationsEnabled(val);
+                onValueChange={async (val) => {
                   if (Platform.OS !== "web") Haptics.selectionAsync();
+                  if (val) {
+                    const granted = await enablePushNotifications();
+                    setNotificationsEnabled(granted);
+                    if (!granted) {
+                      Alert.alert(
+                        "Notifications Blocked",
+                        "Please enable notifications in your device Settings.",
+                      );
+                    }
+                  } else {
+                    await disablePushNotifications();
+                    setNotificationsEnabled(false);
+                  }
                 }}
                 trackColor={{ false: "#333333", true: "rgba(255,153,51,0.4)" }}
                 thumbColor={notificationsEnabled ? "#FF9933" : "#666666"}

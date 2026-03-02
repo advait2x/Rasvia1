@@ -1312,7 +1312,7 @@ export default function RestaurantDetail() {
               </View>
             </Pressable>
 
-            {/* Takeout */}
+            {/* Takeout — Individual */}
             <Pressable
               onPress={() => {
                 if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -1322,22 +1322,56 @@ export default function RestaurantDetail() {
                 setShowCheckout(true);
               }}
               style={{
-                backgroundColor: "#1a1a1a",
+                backgroundColor: "rgba(20,184,166,0.08)",
                 borderRadius: 18,
                 padding: 20,
+                marginBottom: 12,
                 flexDirection: "row",
                 alignItems: "center",
                 borderWidth: 1.5,
-                borderColor: "#2a2a2a",
+                borderColor: "rgba(20,184,166,0.25)",
               }}
             >
-              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: "#0f0f0f", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
-                <Truck size={22} color="#888" />
+              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: "rgba(20,184,166,0.12)", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
+                <Truck size={22} color="#14B8A6" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 18 }}>Takeout</Text>
                 <Text style={{ fontFamily: "Manrope_500Medium", color: "#777", fontSize: 13, marginTop: 2 }}>
                   Pick up your order when ready
+                </Text>
+              </View>
+            </Pressable>
+
+            {/* Group Order */}
+            <Pressable
+              onPress={() => {
+                if (isClosed) {
+                  Alert.alert("Restaurant Closed", "Group orders are not available while the restaurant is closed.");
+                  return;
+                }
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setShowOrderTypePicker(false);
+                router.push("/host_party" as any);
+              }}
+              style={{
+                backgroundColor: isClosed ? "#141414" : "rgba(139,92,246,0.08)",
+                borderRadius: 18,
+                padding: 20,
+                flexDirection: "row",
+                alignItems: "center",
+                borderWidth: 1.5,
+                borderColor: isClosed ? "#1e1e1e" : "rgba(139,92,246,0.25)",
+                opacity: isClosed ? 0.5 : 1,
+              }}
+            >
+              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isClosed ? "#1a1a1a" : "rgba(139,92,246,0.12)", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
+                <Users size={22} color={isClosed ? "#555" : "#8B5CF6"} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: isClosed ? "#666" : "#f5f5f5", fontSize: 18 }}>Group Order</Text>
+                <Text style={{ fontFamily: "Manrope_500Medium", color: "#777", fontSize: 13, marginTop: 2 }}>
+                  {isClosed ? "Unavailable while closed" : "Order together with friends"}
                 </Text>
               </View>
             </Pressable>

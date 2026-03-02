@@ -37,6 +37,7 @@ import { useAuth } from "../lib/auth-context";
 import { useNotifications } from "../lib/notifications-context";
 import { useLocation } from "../lib/location-context";
 import { haversineDistance } from "../lib/restaurant-types";
+import { useClosedRestaurantIds } from "../hooks/useClosedRestaurantIds";
 import * as Linking from "expo-linking";
 
 interface Restaurant {
@@ -58,6 +59,7 @@ export default function HostPartyScreen() {
   const { session } = useAuth();
   const { addEvent } = useNotifications();
   const { userCoords } = useLocation();
+  const closedRestaurantIds = useClosedRestaurantIds();
 
   const currentUserId = session?.user?.id;
   const activeOrderKey = currentUserId
@@ -180,6 +182,10 @@ export default function HostPartyScreen() {
       return matchName || matchTag;
     })
     .sort((a, b) => {
+      const aIsClosed = closedRestaurantIds.has(String(a.id));
+      const bIsClosed = closedRestaurantIds.has(String(b.id));
+      // Open restaurants come first
+      if (aIsClosed !== bIsClosed) return aIsClosed ? 1 : -1;
       if (sortBy === "waitTime") {
         const aw = a.current_wait_time ?? 9999;
         const bw = b.current_wait_time ?? 9999;
@@ -191,15 +197,21 @@ export default function HostPartyScreen() {
       return nameA.localeCompare(nameB);
     });
 
-  const waitLabel = (wt: number | null): { text: string; color: string } => {
+  const waitLabel = (r: Restaurant): { text: string; color: string } => {
+    if (closedRestaurantIds.has(String(r.id))) return { text: "Closed", color: "#888" };
+    const wt = r.current_wait_time;
     if (wt === null || wt < 0) return { text: "No wait", color: "#888" };
-    if (wt >= 999) return { text: "Closed", color: "#555" };
+    if (wt >= 999) return { text: "Closed", color: "#888" };
     if (wt < 15) return { text: `${wt} min`, color: "#22C55E" };
     if (wt < 45) return { text: `${wt} min`, color: "#F59E0B" };
     return { text: `${wt} min`, color: "#EF4444" };
   };
 
   const handleSelectRestaurant = (r: Restaurant) => {
+    if (closedRestaurantIds.has(String(r.id))) {
+      Alert.alert("Restaurant Closed", `${r.name} is currently closed and cannot accept group orders.`);
+      return;
+    }
     if (Platform.OS !== "web")
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedRestaurant(r);
@@ -207,6 +219,10 @@ export default function HostPartyScreen() {
 
   const handleStart = async () => {
     if (!selectedRestaurant) return;
+    if (closedRestaurantIds.has(String(selectedRestaurant.id))) {
+      Alert.alert("Restaurant Closed", "This restaurant is currently closed.");
+      return;
+    }
     if (!session?.user?.id) {
       Alert.alert("Error", "You must be logged in to host a party.");
       return;
@@ -575,14 +591,17 @@ export default function HostPartyScreen() {
                 <View style={{ paddingTop: 4 }}>
                   {filteredRestaurants.map((r, i) => {
                     const isSelected = selectedRestaurant?.id === r.id;
-                    const wt = waitLabel(r.current_wait_time);
+                    const wt = waitLabel(r);
+                    const isClosed = closedRestaurantIds.has(String(r.id));
                     return (
                       <Animated.View
                         key={r.id}
                         entering={FadeInDown.delay(i * 30).duration(250)}
                       >
+                        <View style={{ opacity: isClosed ? 0.5 : 1 }}>
                         <Pressable
                           onPress={() => handleSelectRestaurant(r)}
+                          disabled={isClosed}
                           style={{
                             flexDirection: "row",
                             alignItems: "center",
@@ -700,6 +719,7 @@ export default function HostPartyScreen() {
                             </View>
                           </View>
                         </Pressable>
+                        </View>
                       </Animated.View>
                     );
                   })}

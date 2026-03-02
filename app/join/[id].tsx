@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
     View, Text, TextInput, FlatList, SectionList,
     Alert, ActivityIndicator, Modal, Platform, ScrollView,
-    Pressable, Image,
+    Pressable, Image, Share,
 } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
@@ -16,7 +16,7 @@ import {
     ArrowLeft, ShoppingCart, Plus, Minus, X, Coffee, Sun, Moon,
     Star, Clock, Leaf, Flame, ChevronDown, ChevronUp,
     CheckCircle2, Users, DollarSign, Trash2, Send,
-    Crown, Search, Filter, CreditCard,
+    Crown, Search, Filter, CreditCard, Share2,
 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn, FadeInUp } from 'react-native-reanimated';
 
@@ -83,6 +83,7 @@ export default function JoinPartyScreen() {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [showMemberBreakdown, setShowMemberBreakdown] = useState(true);
+    const [itemQuantities, setItemQuantities] = useState<Record<string, number>>({});
 
     const channelRef = useRef<any>(null);
     const fetchCartRef = useRef<() => Promise<void>>(async () => { });
@@ -93,10 +94,10 @@ export default function JoinPartyScreen() {
     const nameKey = userId ? `party_name_${userId}_${sessionId}` : `party_name_anon_${sessionId}`;
     const activeOrderKey = userId ? `rasvia:active_group_order:${userId}` : 'rasvia:active_group_order:anon';
 
-    const totalItems = cartItems.length;
+    const totalItems = cartItems.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
     const totalPrice = cartItems.reduce((sum, item) => {
         const price = item.menu_items?.price ?? item.price ?? 0;
-        return sum + Number(price);
+        return sum + Number(price) * (item.quantity ?? 1);
     }, 0);
 
     const uniqueMembers = useMemo(() => {
@@ -111,7 +112,7 @@ export default function JoinPartyScreen() {
             const name = item.added_by_name || 'Unknown';
             if (!totals[name]) totals[name] = { items: [], total: 0 };
             totals[name].items.push(item);
-            totals[name].total += Number(item.menu_items?.price ?? item.price ?? 0);
+            totals[name].total += Number(item.menu_items?.price ?? item.price ?? 0) * (item.quantity ?? 1);
         });
         return totals;
     }, [cartItems]);
@@ -272,14 +273,13 @@ export default function JoinPartyScreen() {
             const { path } = Linking.parse(event.url);
             if (path === 'checkout/success') {
                 try {
-                    await supabase
-                        .from('party_sessions')
-                        .update({ status: 'submitted', submitted_at: new Date().toISOString() })
-                        .eq('id', sessionId);
-                } catch {/* best-effort */ }
-                setSubmitted(true);
-                setShowCartModal(false);
-                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    await finaliseSubmit();
+                } catch {
+                    // best-effort: still show submitted state
+                    setSubmitted(true);
+                    setShowCartModal(false);
+                    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
             }
         };
 
@@ -291,7 +291,7 @@ export default function JoinPartyScreen() {
         });
 
         return () => subscription.remove();
-    }, [sessionId]);
+    }, [sessionId, cartItems, totalPrice, restaurantName, restaurantId]);
 
     // Persist session ID so home page can find it (user-scoped)
     useEffect(() => {
@@ -323,16 +323,17 @@ export default function JoinPartyScreen() {
         }
     };
 
-    const addToCart = async (item: any) => {
+    const addToCart = async (item: any, quantity: number = 1) => {
         if (submitted) return;
         if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
         const tempId = `temp-${Math.random()}`;
         const optimistic = {
             id: tempId,
+            menu_item_id: item.id,
             menu_items: { name: item.name, price: item.price, description: item.description, image_url: item.image_url },
             added_by_name: guestName,
-            quantity: 1,
+            quantity,
         };
         setCartItems(prev => [...prev, optimistic]);
 
@@ -340,13 +341,15 @@ export default function JoinPartyScreen() {
             session_id: sessionId,
             menu_item_id: item.id,
             added_by_name: guestName,
-            quantity: 1,
+            quantity,
         });
 
         if (error) {
             setCartItems(prev => prev.filter(i => i.id !== tempId));
             Alert.alert('Error', 'Could not add item. Please try again.');
         }
+        // Reset the quantity selector
+        setItemQuantities(prev => { const n = { ...prev }; delete n[item.id.toString()]; return n; });
     };
 
     const removeFromCart = async (itemId: string) => {
@@ -405,6 +408,7 @@ export default function JoinPartyScreen() {
         const orderSummary = cartItems.map(ci => ({
             name: ci.menu_items?.name ?? 'Unknown',
             price: Number(ci.menu_items?.price ?? 0),
+            quantity: ci.quantity ?? 1,
             added_by: ci.added_by_name,
         }));
 
@@ -608,12 +612,17 @@ export default function JoinPartyScreen() {
                                             </View>
                                             <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color, fontSize: 16 }}>${data.total.toFixed(2)}</Text>
                                         </View>
-                                        {data.items.map(item => (
-                                            <View key={item.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#262626' }}>
-                                                <Text style={{ fontFamily: 'Manrope_500Medium', color: '#aaa', fontSize: 13, flex: 1 }} numberOfLines={1}>{item.menu_items?.name ?? 'Item'}</Text>
-                                                <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#888', fontSize: 13 }}>${Number(item.menu_items?.price ?? 0).toFixed(2)}</Text>
-                                            </View>
-                                        ))}
+                                        {data.items.map(item => {
+                                            const qty = item.quantity ?? 1;
+                                            return (
+                                                <View key={item.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#262626' }}>
+                                                    <Text style={{ fontFamily: 'Manrope_500Medium', color: '#aaa', fontSize: 13, flex: 1 }} numberOfLines={1}>
+                                                        {item.menu_items?.name ?? 'Item'}{qty > 1 ? ` ×${qty}` : ''}
+                                                    </Text>
+                                                    <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#888', fontSize: 13 }}>${(Number(item.menu_items?.price ?? 0) * qty).toFixed(2)}</Text>
+                                                </View>
+                                            );
+                                        })}
                                     </View>
                                 </Animated.View>
                             );
@@ -723,6 +732,21 @@ export default function JoinPartyScreen() {
                             <Trash2 size={18} color="#EF4444" />
                         </Pressable>
                     )}
+                    <Pressable
+                        onPress={async () => {
+                            if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            const url = Linking.createURL(`/join/${sessionId}`);
+                            try {
+                                await Share.share({
+                                    message: `Join my group order at ${restaurantName}! 🍽️\n${url}`,
+                                    url,
+                                });
+                            } catch {}
+                        }}
+                        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}
+                    >
+                        <Share2 size={18} color="#f5f5f5" />
+                    </Pressable>
                     <Pressable
                         onPress={() => totalItems > 0 && setShowCartModal(true)}
                         style={{ position: 'relative', width: 44, height: 44, borderRadius: 22, backgroundColor: totalItems > 0 ? '#FF9933' : '#1a1a1a', borderWidth: 1, borderColor: totalItems > 0 ? '#FF9933' : '#2a2a2a', alignItems: 'center', justifyContent: 'center' }}
@@ -885,13 +909,44 @@ export default function JoinPartyScreen() {
                                             </Text>
                                         ) : null}
 
+                                        {/* Quantity Stepper */}
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 14 }}>
+                                            <Pressable
+                                                onPress={() => {
+                                                    const key = item.id.toString();
+                                                    setItemQuantities(prev => ({
+                                                        ...prev,
+                                                        [key]: Math.max(1, (prev[key] ?? 1) - 1),
+                                                    }));
+                                                }}
+                                                style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#262626', borderWidth: 1, borderColor: '#3a3a3a', alignItems: 'center', justifyContent: 'center' }}
+                                            >
+                                                <Minus size={18} color="#f5f5f5" />
+                                            </Pressable>
+                                            <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 20, minWidth: 32, textAlign: 'center' }}>
+                                                {itemQuantities[item.id.toString()] ?? 1}
+                                            </Text>
+                                            <Pressable
+                                                onPress={() => {
+                                                    const key = item.id.toString();
+                                                    setItemQuantities(prev => ({
+                                                        ...prev,
+                                                        [key]: (prev[key] ?? 1) + 1,
+                                                    }));
+                                                }}
+                                                style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#262626', borderWidth: 1, borderColor: '#3a3a3a', alignItems: 'center', justifyContent: 'center' }}
+                                            >
+                                                <Plus size={18} color="#f5f5f5" />
+                                            </Pressable>
+                                        </View>
+
                                         <Pressable
-                                            onPress={() => { addToCart(item); setExpandedItemId(null); }}
+                                            onPress={() => { const qty = itemQuantities[item.id.toString()] ?? 1; addToCart(item, qty); setExpandedItemId(null); }}
                                             style={{ backgroundColor: '#FF9933', borderRadius: 14, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                                         >
                                             <Plus size={18} color="#0f0f0f" />
                                             <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#0f0f0f', fontSize: 15 }}>
-                                                Add to Order · ${Number(item.price).toFixed(2)}
+                                                Add {itemQuantities[item.id.toString()] ?? 1} to Order · ${(Number(item.price) * (itemQuantities[item.id.toString()] ?? 1)).toFixed(2)}
                                             </Text>
                                         </Pressable>
                                     </Animated.View>
@@ -980,11 +1035,18 @@ export default function JoinPartyScreen() {
                                         {data.items.map(item => (
                                             <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1a1a1a', borderRadius: 14, borderWidth: 1, borderColor: '#2a2a2a', padding: 12, marginBottom: 6 }}>
                                                 <View style={{ flex: 1 }}>
-                                                    <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 14 }} numberOfLines={1}>
-                                                        {item.menu_items?.name ?? 'Item'}
-                                                    </Text>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                        <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 14 }} numberOfLines={1}>
+                                                            {item.menu_items?.name ?? 'Item'}
+                                                        </Text>
+                                                        {(item.quantity ?? 1) > 1 && (
+                                                            <View style={{ backgroundColor: 'rgba(255,153,51,0.15)', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 }}>
+                                                                <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#FF9933', fontSize: 11 }}>×{item.quantity}</Text>
+                                                            </View>
+                                                        )}
+                                                    </View>
                                                     <Text style={{ fontFamily: 'Manrope_500Medium', color: '#FF9933', fontSize: 13, marginTop: 2 }}>
-                                                        ${Number(item.menu_items?.price ?? 0).toFixed(2)}
+                                                        ${(Number(item.menu_items?.price ?? 0) * (item.quantity ?? 1)).toFixed(2)}
                                                     </Text>
                                                 </View>
                                                 {canRemove && !submitted && (
@@ -1007,21 +1069,29 @@ export default function JoinPartyScreen() {
                             renderItem={({ item }) => {
                                 const memberColor = getMemberColor(item.added_by_name || '', uniqueMembers);
                                 const canRemove = isHost || item.added_by_name === guestName;
+                                const qty = item.quantity ?? 1;
                                 return (
                                     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 16, borderWidth: 1, borderColor: '#2a2a2a', padding: 14, marginBottom: 10 }}>
                                         <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: `${memberColor}20`, borderWidth: 1.5, borderColor: memberColor, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
                                             <Text style={{ fontFamily: 'Manrope_600SemiBold', color: memberColor, fontSize: 10 }}>{(item.added_by_name || '?').charAt(0).toUpperCase()}</Text>
                                         </View>
                                         <View style={{ flex: 1 }}>
-                                            <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 15 }} numberOfLines={1}>
-                                                {item.menu_items?.name ?? 'Item'}
-                                            </Text>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 15 }} numberOfLines={1}>
+                                                    {item.menu_items?.name ?? 'Item'}
+                                                </Text>
+                                                {qty > 1 && (
+                                                    <View style={{ backgroundColor: 'rgba(255,153,51,0.15)', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 }}>
+                                                        <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#FF9933', fontSize: 11 }}>×{qty}</Text>
+                                                    </View>
+                                                )}
+                                            </View>
                                             <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 12, marginTop: 2 }}>
                                                 {item.added_by_name}
                                             </Text>
                                         </View>
                                         <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#FF9933', fontSize: 15, marginRight: canRemove ? 8 : 0 }}>
-                                            ${Number(item.menu_items?.price ?? 0).toFixed(2)}
+                                            ${(Number(item.menu_items?.price ?? 0) * qty).toFixed(2)}
                                         </Text>
                                         {canRemove && !submitted && (
                                             <Pressable onPress={() => removeFromCart(item.id)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', alignItems: 'center', justifyContent: 'center' }}>

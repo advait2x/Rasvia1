@@ -20,11 +20,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [session, setSession] = useState<Session | null>(null);
     const [loading, setLoading] = useState(true);
     const [needsOnboarding, setNeedsOnboarding] = useState(false);
-    // Track whether we're still checking onboarding status
-    const [onboardingChecking, setOnboardingChecking] = useState(false);
 
     async function checkOnboardingStatus(userId: string) {
-        setOnboardingChecking(true);
         try {
             const { data, error } = await supabase
                 .from('profiles')
@@ -46,8 +43,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setNeedsOnboarding(!data.onboarding_completed);
         } catch {
             setNeedsOnboarding(false);
-        } finally {
-            setOnboardingChecking(false);
         }
     }
 
@@ -65,7 +60,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } = supabase.auth.onAuthStateChange(async (_event, session) => {
             setSession(session);
             if (session?.user?.id) {
-                await checkOnboardingStatus(session.user.id);
+                // Don't block the UI — just update onboarding in the background
+                checkOnboardingStatus(session.user.id);
             } else {
                 setNeedsOnboarding(false);
             }
@@ -74,11 +70,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => subscription.unsubscribe();
     }, []);
 
-    // Combine both loading states: initial load + onboarding check
-    const isLoading = loading || onboardingChecking;
-
     return (
-        <AuthContext.Provider value={{ session, loading: isLoading, needsOnboarding, setNeedsOnboarding }}>
+        <AuthContext.Provider value={{ session, loading, needsOnboarding, setNeedsOnboarding }}>
             {children}
         </AuthContext.Provider>
     );

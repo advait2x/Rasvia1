@@ -22,6 +22,7 @@ import {
   Bell,
   Share2,
 } from "lucide-react-native";
+import { isPushEnabled, enablePushNotifications } from "@/lib/push-notifications";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -68,6 +69,7 @@ export default function WaitlistStatus() {
   const [restaurant, setRestaurant] = useState<UIRestaurant | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const [position, setPosition] = useState<number | null>(null);
   const [totalInQueue, setTotalInQueue] = useState<number>(0);
@@ -81,6 +83,17 @@ export default function WaitlistStatus() {
   // FETCH FROM SUPABASE
   // ==========================================
   useEffect(() => {
+    // Safety timeout: if loading hasn't resolved in 8s, bail out
+    const timeout = setTimeout(() => {
+      setLoading((prev) => {
+        if (prev) {
+          setLoadError(true);
+          return false;
+        }
+        return prev;
+      });
+    }, 8000);
+
     async function fetchData() {
       try {
         // 1. Fetch the restaurant
@@ -92,7 +105,8 @@ export default function WaitlistStatus() {
 
         if (restError) {
           console.error("❌ Error fetching restaurant:", restError);
-          Alert.alert("Error", "Could not load restaurant data.");
+          setLoadError(true);
+          setLoading(false);
           return;
         }
 
@@ -134,6 +148,7 @@ export default function WaitlistStatus() {
         }
       } catch (error) {
         console.error("Error:", error);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
@@ -188,6 +203,7 @@ export default function WaitlistStatus() {
       : null;
 
     return () => {
+      clearTimeout(timeout);
       supabase.removeChannel(restSub);
       supabase.removeChannel(queueSub);
       if (notifySub) supabase.removeChannel(notifySub);
@@ -344,6 +360,12 @@ export default function WaitlistStatus() {
   const [creatingParty, setCreatingParty] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showPreOrderCheckout, setShowPreOrderCheckout] = useState(false);
+  const [pushActive, setPushActive] = useState(true);
+
+  // Check push notification status on mount
+  useEffect(() => {
+    isPushEnabled().then(setPushActive);
+  }, []);
 
   const handleStartGroupOrder = async () => {
     if (Platform.OS !== "web") {
@@ -387,11 +409,6 @@ export default function WaitlistStatus() {
           // Reuse existing session for this restaurant
           const sessionId = sameRest.id;
           const shareUrl = Linking.createURL(`/join/${sessionId}`);
-          await Share.share({
-            title: 'Join my Group Order',
-            message: `I'm holding the table at ${restaurant?.name}! Add your food here: ${shareUrl}`,
-            url: shareUrl,
-          });
 
           // Store as active (user-scoped)
           if (activeOrderKey) await AsyncStorage.setItem(activeOrderKey, JSON.stringify({
@@ -402,6 +419,15 @@ export default function WaitlistStatus() {
           }));
 
           setCreatingParty(false);
+          // Navigate to menu first, then prompt share
+          router.push(`/join/${sessionId}` as any);
+          setTimeout(() => {
+            Share.share({
+              title: 'Join my Group Order',
+              message: `I'm holding the table at ${restaurant?.name}! Add your food here: ${shareUrl}`,
+              url: shareUrl,
+            });
+          }, 600);
           return;
         }
 
@@ -466,11 +492,15 @@ export default function WaitlistStatus() {
         timestamp: new Date().toISOString(),
       });
 
-      await Share.share({
-        title: 'Join my Group Order',
-        message: `I'm holding the table at ${restaurant?.name}! Add your food here: ${shareUrl}`,
-        url: shareUrl,
-      });
+      // Navigate to menu first, then prompt share
+      router.push(`/join/${newSession.id}` as any);
+      setTimeout(() => {
+        Share.share({
+          title: 'Join my Group Order',
+          message: `I'm holding the table at ${restaurant?.name}! Add your food here: ${shareUrl}`,
+          url: shareUrl,
+        });
+      }, 600);
 
     } catch (err: any) {
       Alert.alert("Error", "Could not start party: " + err.message);
@@ -487,7 +517,7 @@ export default function WaitlistStatus() {
   // ==========================================
   // LOADING STATE
   // ==========================================
-  if (loading || !restaurant) {
+  if (loading) {
     return (
       <View className="flex-1 bg-rasvia-black items-center justify-center">
         <ActivityIndicator size="large" color="#FF9933" />
@@ -501,6 +531,54 @@ export default function WaitlistStatus() {
         >
           Loading waitlist...
         </Text>
+      </View>
+    );
+  }
+
+  if (loadError || !restaurant) {
+    return (
+      <View className="flex-1 bg-rasvia-black items-center justify-center" style={{ padding: 32 }}>
+        <Text
+          style={{
+            fontFamily: "BricolageGrotesque_700Bold",
+            color: "#f5f5f5",
+            fontSize: 20,
+            marginBottom: 8,
+            textAlign: "center",
+          }}
+        >
+          Could not load waitlist
+        </Text>
+        <Text
+          style={{
+            fontFamily: "Manrope_500Medium",
+            color: "#999999",
+            fontSize: 14,
+            textAlign: "center",
+            marginBottom: 24,
+          }}
+        >
+          Please check your connection and try again.
+        </Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={{
+            backgroundColor: "#FF9933",
+            borderRadius: 14,
+            paddingVertical: 14,
+            paddingHorizontal: 32,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "BricolageGrotesque_700Bold",
+              color: "#0f0f0f",
+              fontSize: 16,
+            }}
+          >
+            Go Back
+          </Text>
+        </Pressable>
       </View>
     );
   }
@@ -686,11 +764,11 @@ export default function WaitlistStatus() {
                 <Text
                   style={{
                     fontFamily: "JetBrainsMono_600SemiBold",
-                    color: "#22C55E",
+                    color: pushActive ? "#22C55E" : "#EF4444",
                     fontSize: 16,
                   }}
                 >
-                  Active
+                  {pushActive ? "Active" : "Inactive"}
                 </Text>
                 <Text
                   style={{
@@ -700,8 +778,32 @@ export default function WaitlistStatus() {
                     marginTop: 2,
                   }}
                 >
-                  We'll ping you
+                  {pushActive ? "We'll ping you" : "You may miss alerts"}
                 </Text>
+                {!pushActive && (
+                  <Pressable
+                    onPress={async () => {
+                      if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      const granted = await enablePushNotifications();
+                      setPushActive(granted);
+                      if (!granted) {
+                        Alert.alert("Notifications Blocked", "Enable notifications in your device Settings to receive table-ready alerts.");
+                      }
+                    }}
+                    style={{
+                      marginTop: 8,
+                      backgroundColor: "rgba(255,153,51,0.15)",
+                      borderRadius: 10,
+                      paddingHorizontal: 14,
+                      paddingVertical: 6,
+                      alignSelf: "flex-start",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,153,51,0.3)",
+                    }}
+                  >
+                    <Text style={{ fontFamily: "Manrope_700Bold", color: "#FF9933", fontSize: 12 }}>Enable Notifications</Text>
+                  </Pressable>
+                )}
               </View>
             </View>
 

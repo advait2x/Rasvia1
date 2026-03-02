@@ -1,0 +1,125 @@
+/**
+ * Push Notifications Helper
+ *
+ * Handles registration, permission checking, and scheduling
+ * local push notifications via expo-notifications.
+ */
+
+import { Platform } from "react-native";
+import * as Notifications from "expo-notifications";
+import * as Device from "expo-device";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const PUSH_ENABLED_KEY = "rasvia:push-notifications-enabled";
+
+// Configure how notifications appear when the app is in the foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
+/**
+ * Check if push notifications are currently enabled (permission granted + user toggle on).
+ */
+export async function isPushEnabled(): Promise<boolean> {
+  if (!Device.isDevice) return false;
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status !== "granted") return false;
+  const saved = await AsyncStorage.getItem(PUSH_ENABLED_KEY);
+  return saved !== "false"; // default to true if permission granted
+}
+
+/**
+ * Get the current OS-level permission status.
+ */
+export async function getPushPermissionStatus(): Promise<"granted" | "denied" | "undetermined"> {
+  if (!Device.isDevice) return "denied";
+  const { status } = await Notifications.getPermissionsAsync();
+  return status;
+}
+
+/**
+ * Request push notification permissions and optionally get the Expo push token.
+ * Returns true if permission was granted.
+ */
+export async function registerForPushNotifications(): Promise<boolean> {
+  if (!Device.isDevice) {
+    console.log("Push notifications require a physical device");
+    return false;
+  }
+
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  let finalStatus = existing;
+
+  if (existing !== "granted") {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+
+  if (finalStatus !== "granted") {
+    return false;
+  }
+
+  // Set up Android notification channel
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("waitlist", {
+      name: "Waitlist Alerts",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#FF9933",
+      sound: "default",
+    });
+  }
+
+  // Persist the enabled state
+  await AsyncStorage.setItem(PUSH_ENABLED_KEY, "true");
+  return true;
+}
+
+/**
+ * Disable push notifications (user toggle off).
+ * Does NOT revoke OS permissions, just disables in-app sending.
+ */
+export async function disablePushNotifications(): Promise<void> {
+  await AsyncStorage.setItem(PUSH_ENABLED_KEY, "false");
+}
+
+/**
+ * Enable push notifications (user toggle on).
+ * Requests permissions if not already granted.
+ */
+export async function enablePushNotifications(): Promise<boolean> {
+  const granted = await registerForPushNotifications();
+  if (granted) {
+    await AsyncStorage.setItem(PUSH_ENABLED_KEY, "true");
+  }
+  return granted;
+}
+
+/**
+ * Schedule a local push notification immediately.
+ * Only sends if push is enabled.
+ */
+export async function schedulePushNotification(
+  title: string,
+  body: string,
+  data?: Record<string, any>,
+): Promise<void> {
+  const enabled = await isPushEnabled();
+  if (!enabled) return;
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title,
+      body,
+      sound: "default",
+      data: data ?? {},
+    },
+    trigger: null, // fire immediately
+  });
+}

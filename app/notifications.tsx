@@ -827,7 +827,7 @@ export default function NotificationsScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           scrollEnabled={!isEmpty}
-          contentContainerStyle={isEmpty ? { flex: 1 } : { paddingBottom: 40 }}
+          contentContainerStyle={isEmpty ? { flexGrow: 1, justifyContent: "center" } : { paddingBottom: 40 }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

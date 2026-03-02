@@ -17,6 +17,7 @@ import React, {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
 import { useAuth } from "./auth-context";
+import { schedulePushNotification } from "./push-notifications";
 
 // ==========================================
 // TYPES
@@ -308,6 +309,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
               });
               // Fire global in-app banner
               setTableReadyAlert({ restaurantName, entryId });
+              // Fire push notification
+              schedulePushNotification(
+                "🎉 Your Table is Ready!",
+                `${restaurantName} — your table is ready! Head over now.`,
+                { type: "table_ready", entryId, restaurantId },
+              );
               // Update active entry status
               setActiveEntries((prev) =>
                 prev.map((e) =>
@@ -329,6 +336,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
               });
               // Fire global in-app blue banner
               setSeatedAlert({ restaurantName, entryId });
+              // Fire push notification
+              schedulePushNotification(
+                "🍽️ You're Seated!",
+                `Enjoy your meal at ${restaurantName}!`,
+                { type: "seated", entryId, restaurantId },
+              );
               // Keep entry visible with seated status — user must dismiss it manually
               setActiveEntries((prev) =>
                 prev.map((e) =>
