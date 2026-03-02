@@ -267,19 +267,45 @@ export default function JoinPartyScreen() {
         };
     }, [sessionId]);
 
-    // Deep-link handler: rasvia://checkout/success → mark order submitted
+    // Deep-link handler: rasvia://checkout/success|cancel|error
     useEffect(() => {
         const handleUrl = async (event: { url: string }) => {
-            const { path } = Linking.parse(event.url);
-            if (path === 'checkout/success') {
-                try {
-                    await finaliseSubmit();
-                } catch {
-                    // best-effort: still show submitted state
-                    setSubmitted(true);
-                    setShowCartModal(false);
-                    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                }
+            const { path, queryParams } = Linking.parse(event.url);
+
+            if (path === 'checkout/success' || path === 'order-confirmation') {
+                // Order was already saved server-side by the payment-redirect function.
+                // Just update the local UI state.
+                setSubmitted(true);
+                setShowCartModal(false);
+                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+                // Also mark party_session as submitted locally (server already did it)
+                addEvent({
+                    type: 'group_submitted',
+                    restaurantName,
+                    restaurantId: String(sessionId),
+                    entryId: String(sessionId),
+                    partySize: cartItems.length,
+                    timestamp: new Date().toISOString(),
+                });
+                AsyncStorage.removeItem(activeOrderKey);
+            } else if (path === 'checkout/cancel') {
+                setShowCartModal(false);
+                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                Alert.alert(
+                    'Payment Cancelled',
+                    'Your payment was not processed. You can try again when you\'re ready.',
+                );
+            } else if (path === 'checkout/error') {
+                setShowCartModal(false);
+                const reason = (queryParams as any)?.reason || 'unknown';
+                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                Alert.alert(
+                    'Payment Error',
+                    reason === 'payment_incomplete'
+                        ? 'Your payment could not be confirmed. Please check your card details and try again.'
+                        : `Something went wrong with your payment. Please try again.\n\nDetails: ${reason}`,
+                );
             }
         };
 
@@ -464,6 +490,16 @@ export default function JoinPartyScreen() {
 
                             if (stripeAccountId) {
                                 // 2a. Restaurant has Stripe → open Checkout
+                                // Build cart items metadata for the redirect page to save
+                                const cartMeta = cartItems.map(ci => ({
+                                    name: ci.menu_items?.name ?? 'Unknown',
+                                    price: Number(ci.menu_items?.price ?? 0),
+                                    quantity: ci.quantity ?? 1,
+                                    menu_item_id: ci.menu_item_id,
+                                    is_vegetarian: ci.menu_items?.is_vegetarian ?? false,
+                                    added_by: ci.added_by_name || guestName || '',
+                                }));
+
                                 const { data: fnData, error: fnError } = await supabase.functions.invoke(
                                     'create-checkout',
                                     {
@@ -471,6 +507,13 @@ export default function JoinPartyScreen() {
                                             restaurant_id: restaurantId,
                                             stripe_account_id: stripeAccountId,
                                             amount: totalPrice,
+                                            // Order metadata for the redirect page
+                                            party_session_id: sessionId,
+                                            cart_items: cartMeta,
+                                            restaurant_name: restaurantName,
+                                            customer_name: guestName,
+                                            user_id: userId,
+                                            order_type: 'dine_in',
                                         },
                                     }
                                 );
@@ -480,15 +523,41 @@ export default function JoinPartyScreen() {
                                 const checkoutUrl: string = fnData?.url;
                                 if (!checkoutUrl) throw new Error('No checkout URL returned.');
 
-                                // 3. Open Stripe Checkout in the browser
-                                //    The deep link rasvia://checkout/success will trigger
-                                //    the Linking listener above when payment completes.
+                                // 3. Open Stripe Checkout in the in-app browser
+                                //    After payment, Stripe redirects to our payment-redirect
+                                //    edge function, which saves the order and redirects
+                                //    back into the app via deep link.
                                 await WebBrowser.openBrowserAsync(checkoutUrl, {
                                     dismissButtonStyle: 'cancel',
                                     presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
                                 });
-                                // Note: finaliseSubmit is called from the deep-link handler
-                                //       (rasvia://checkout/success) — not here.
+
+                                // 4. After browser is dismissed (user may have been redirected
+                                //    via deep link, or manually closed the browser).
+                                //    Check if the order was already saved by the redirect page.
+                                if (!submitted) {
+                                    // Check server-side if the party session was submitted
+                                    const { data: sessCheck } = await supabase
+                                        .from('party_sessions')
+                                        .select('status')
+                                        .eq('id', sessionId)
+                                        .single();
+
+                                    if (sessCheck?.status === 'submitted') {
+                                        setSubmitted(true);
+                                        setShowCartModal(false);
+                                        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                        addEvent({
+                                            type: 'group_submitted',
+                                            restaurantName,
+                                            restaurantId: String(sessionId),
+                                            entryId: String(sessionId),
+                                            partySize: cartItems.length,
+                                            timestamp: new Date().toISOString(),
+                                        });
+                                        AsyncStorage.removeItem(activeOrderKey);
+                                    }
+                                }
                             } else {
                                 // 2b. No Stripe account → submit directly to kitchen
                                 await finaliseSubmit();
@@ -741,7 +810,7 @@ export default function JoinPartyScreen() {
                                     message: `Join my group order at ${restaurantName}! 🍽️\n${url}`,
                                     url,
                                 });
-                            } catch {}
+                            } catch { }
                         }}
                         style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}
                     >

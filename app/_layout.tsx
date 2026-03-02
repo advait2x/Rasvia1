@@ -6,8 +6,9 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { View, ActivityIndicator, Platform } from "react-native";
+import { View, ActivityIndicator, Platform, Alert } from "react-native";
 import * as Haptics from "expo-haptics";
+import * as Linking from "expo-linking";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
@@ -123,6 +124,52 @@ function AuthGate() {
     }
   }, [session, loading, needsOnboarding, segments]);
 
+  // ── Global deep link handler for checkout/cancel & error ──
+  useEffect(() => {
+    const handleUrl = (event: { url: string }) => {
+      const { path, queryParams } = Linking.parse(event.url);
+
+      if (path === 'checkout/cancel') {
+        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Alert.alert(
+          'Payment Cancelled',
+          'Your payment was not processed. No charges were made.',
+          [{ text: 'OK', onPress: () => router.replace('/') }],
+        );
+      } else if (path === 'checkout/error') {
+        const reason = (queryParams as any)?.reason || 'unknown';
+        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert(
+          'Payment Error',
+          reason === 'payment_incomplete'
+            ? 'Your payment could not be confirmed. Please try again.'
+            : `Something went wrong. Please try again.`,
+          [{ text: 'OK', onPress: () => router.replace('/') }],
+        );
+      } else if (path === 'order-confirmation') {
+        // Navigate to the order confirmation screen with params
+        const params = queryParams as any;
+        router.push({
+          pathname: '/order-confirmation' as any,
+          params: {
+            order_id: params?.order_id || '',
+            restaurant_name: params?.restaurant_name || '',
+            order_type: params?.order_type || 'dine_in',
+            total: params?.total || '0',
+            party_session_id: params?.party_session_id || '',
+          },
+        });
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', handleUrl);
+    Linking.getInitialURL().then(url => {
+      if (url) handleUrl({ url });
+    });
+
+    return () => subscription.remove();
+  }, [router]);
+
   // Block ALL rendering until auth state is known
   if (loading) {
     return (
@@ -182,6 +229,10 @@ function AuthGate() {
       <Stack.Screen
         name="my-orders"
         options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
+        name="order-confirmation"
+        options={{ headerShown: false, animation: "slide_from_bottom" }}
       />
     </Stack>
   );
