@@ -8,13 +8,15 @@ import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import { useNotifications } from '../../lib/notifications-context';
 import { useAuth } from '../../lib/auth-context';
 import {
     ArrowLeft, ShoppingCart, Plus, Minus, X, Coffee, Sun, Moon,
     Star, Clock, Leaf, Flame, ChevronDown, ChevronUp,
     CheckCircle2, Users, DollarSign, Trash2, Send,
-    Crown, Search, Filter,
+    Crown, Search, Filter, CreditCard,
 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn, FadeInUp } from 'react-native-reanimated';
 
@@ -22,10 +24,10 @@ type MealPeriod = 'breakfast' | 'lunch' | 'dinner' | 'specials' | 'all_day';
 
 const MEAL_PERIOD_CFG: Record<MealPeriod, { label: string; color: string; bg: string; border: string; Icon: any }> = {
     breakfast: { label: 'Breakfast', color: '#F97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.35)', Icon: Coffee },
-    lunch:     { label: 'Lunch',     color: '#22C55E', bg: 'rgba(34,197,94,0.15)',  border: 'rgba(34,197,94,0.35)',  Icon: Sun },
-    dinner:    { label: 'Dinner',    color: '#818CF8', bg: 'rgba(129,140,248,0.15)', border: 'rgba(129,140,248,0.35)', Icon: Moon },
-    specials:  { label: 'Specials',  color: '#F59E0B', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.35)', Icon: Star },
-    all_day:   { label: 'All Day',   color: '#94A3B8', bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.35)', Icon: Clock },
+    lunch: { label: 'Lunch', color: '#22C55E', bg: 'rgba(34,197,94,0.15)', border: 'rgba(34,197,94,0.35)', Icon: Sun },
+    dinner: { label: 'Dinner', color: '#818CF8', bg: 'rgba(129,140,248,0.15)', border: 'rgba(129,140,248,0.35)', Icon: Moon },
+    specials: { label: 'Specials', color: '#F59E0B', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.35)', Icon: Star },
+    all_day: { label: 'All Day', color: '#94A3B8', bg: 'rgba(148,163,184,0.15)', border: 'rgba(148,163,184,0.35)', Icon: Clock },
 };
 
 const MEMBER_COLORS = ['#FF9933', '#22C55E', '#3B82F6', '#A855F7', '#EC4899', '#F59E0B', '#06B6D4', '#EF4444'];
@@ -83,7 +85,7 @@ export default function JoinPartyScreen() {
     const [showMemberBreakdown, setShowMemberBreakdown] = useState(true);
 
     const channelRef = useRef<any>(null);
-    const fetchCartRef = useRef<() => Promise<void>>(async () => {});
+    const fetchCartRef = useRef<() => Promise<void>>(async () => { });
     const sessionId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '';
     const userId = session?.user?.id ?? '';
 
@@ -264,6 +266,33 @@ export default function JoinPartyScreen() {
         };
     }, [sessionId]);
 
+    // Deep-link handler: rasvia://checkout/success → mark order submitted
+    useEffect(() => {
+        const handleUrl = async (event: { url: string }) => {
+            const { path } = Linking.parse(event.url);
+            if (path === 'checkout/success') {
+                try {
+                    await supabase
+                        .from('party_sessions')
+                        .update({ status: 'submitted', submitted_at: new Date().toISOString() })
+                        .eq('id', sessionId);
+                } catch {/* best-effort */ }
+                setSubmitted(true);
+                setShowCartModal(false);
+                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+        };
+
+        const subscription = Linking.addEventListener('url', handleUrl);
+
+        // Also check if the app was opened cold via a deep link
+        Linking.getInitialURL().then(url => {
+            if (url) handleUrl({ url });
+        });
+
+        return () => subscription.remove();
+    }, [sessionId]);
+
     // Persist session ID so home page can find it (user-scoped)
     useEffect(() => {
         if (sessionId && isJoined && restaurantName && userId) {
@@ -365,62 +394,108 @@ export default function JoinPartyScreen() {
         );
     };
 
-    const submitOrderToKitchen = async () => {
+    // ── Internal helper: mark session submitted in DB and fire events ──────
+    const finaliseSubmit = async () => {
+        const { error } = await supabase
+            .from('party_sessions')
+            .update({ status: 'submitted', submitted_at: new Date().toISOString() })
+            .eq('id', sessionId);
+        if (error) throw error;
+
+        const orderSummary = cartItems.map(ci => ({
+            name: ci.menu_items?.name ?? 'Unknown',
+            price: Number(ci.menu_items?.price ?? 0),
+            added_by: ci.added_by_name,
+        }));
+
+        await supabase.from('group_orders').insert({
+            party_session_id: sessionId,
+            restaurant_id: restaurantId,
+            items: orderSummary,
+            total: totalPrice,
+            submitted_at: new Date().toISOString(),
+        }).then(() => { });
+
+        setSubmitted(true);
+        setShowCartModal(false);
+        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+        addEvent({
+            type: 'group_submitted',
+            restaurantName,
+            restaurantId: String(sessionId),
+            entryId: String(sessionId),
+            partySize: cartItems.length,
+            timestamp: new Date().toISOString(),
+        });
+
+        AsyncStorage.removeItem(activeOrderKey);
+    };
+
+    // ── Main Pay / Submit handler ────────────────────────────────────────
+    const handlePayment = async () => {
         if (!isHost || cartItems.length === 0) return;
 
         Alert.alert(
             'Submit Group Order',
-            `Send ${totalItems} items ($${totalPrice.toFixed(2)}) to the kitchen?\n\nThis action cannot be undone.`,
+            `${totalItems} items · $${totalPrice.toFixed(2)}\n\nThis action cannot be undone.`,
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
-                    text: 'Submit',
+                    text: 'Pay & Submit',
                     style: 'default',
                     onPress: async () => {
                         setSubmitting(true);
                         try {
-                            const { error } = await supabase
-                                .from('party_sessions')
-                                .update({ status: 'submitted', submitted_at: new Date().toISOString() })
-                                .eq('id', sessionId);
+                            // 1. Fetch the restaurant's Stripe account
+                            const { data: restData, error: restError } = await supabase
+                                .from('restaurants')
+                                .select('stripe_account_id')
+                                .eq('id', restaurantId)
+                                .single();
 
-                            if (error) throw error;
+                            if (restError) throw restError;
 
-                            const orderSummary = cartItems.map(ci => ({
-                                name: ci.menu_items?.name ?? 'Unknown',
-                                price: Number(ci.menu_items?.price ?? 0),
-                                added_by: ci.added_by_name,
-                            }));
+                            const stripeAccountId = restData?.stripe_account_id;
 
-                            await supabase.from('group_orders').insert({
-                                party_session_id: sessionId,
-                                restaurant_id: restaurantId,
-                                items: orderSummary,
-                                total: totalPrice,
-                                submitted_at: new Date().toISOString(),
-                            }).then(() => {});
+                            if (stripeAccountId) {
+                                // 2a. Restaurant has Stripe → open Checkout
+                                const { data: fnData, error: fnError } = await supabase.functions.invoke(
+                                    'create-checkout',
+                                    {
+                                        body: {
+                                            restaurant_id: restaurantId,
+                                            stripe_account_id: stripeAccountId,
+                                            amount: totalPrice,
+                                        },
+                                    }
+                                );
 
-                            setSubmitted(true);
-                            setShowCartModal(false);
-                            if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                if (fnError) throw fnError;
 
-                            addEvent({
-                                type: 'group_submitted',
-                                restaurantName,
-                                restaurantId: String(sessionId),
-                                entryId: String(sessionId),
-                                partySize: cartItems.length,
-                                timestamp: new Date().toISOString(),
-                            });
+                                const checkoutUrl: string = fnData?.url;
+                                if (!checkoutUrl) throw new Error('No checkout URL returned.');
 
-                            AsyncStorage.removeItem(activeOrderKey);
+                                // 3. Open Stripe Checkout in the browser
+                                //    The deep link rasvia://checkout/success will trigger
+                                //    the Linking listener above when payment completes.
+                                await WebBrowser.openBrowserAsync(checkoutUrl, {
+                                    dismissButtonStyle: 'cancel',
+                                    presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+                                });
+                                // Note: finaliseSubmit is called from the deep-link handler
+                                //       (rasvia://checkout/success) — not here.
+                            } else {
+                                // 2b. No Stripe account → submit directly to kitchen
+                                await finaliseSubmit();
+                            }
                         } catch (e: any) {
-                            Alert.alert('Error', e.message);
+                            Alert.alert('Payment Error', e.message || 'Could not initiate payment.');
                         } finally {
                             setSubmitting(false);
                         }
-                    }
-                }
+                    },
+                },
             ]
         );
     };
@@ -988,7 +1063,7 @@ export default function JoinPartyScreen() {
 
                         {isHost ? (
                             <Pressable
-                                onPress={submitOrderToKitchen}
+                                onPress={handlePayment}
                                 disabled={submitting || cartItems.length === 0}
                                 style={{ backgroundColor: '#22C55E', borderRadius: 16, paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: submitting || cartItems.length === 0 ? 0.6 : 1 }}
                             >
@@ -996,9 +1071,9 @@ export default function JoinPartyScreen() {
                                     <ActivityIndicator color="#fff" />
                                 ) : (
                                     <>
-                                        <Send size={18} color="#fff" />
+                                        <CreditCard size={18} color="#fff" />
                                         <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#fff', fontSize: 17 }}>
-                                            Submit to Kitchen
+                                            Pay & Submit Order
                                         </Text>
                                     </>
                                 )}
