@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Mail, Lock, Eye, EyeOff, Phone } from "lucide-react-native";
+import { useRouter } from "expo-router";
 import Animated, {
     FadeIn,
     FadeInUp,
@@ -42,6 +43,7 @@ export default function AuthScreen() {
     const [password, setPassword] = useState("");
     const [firstName, setFirstName] = useState("");
     const [lastInitial, setLastInitial] = useState("");
+    const router = useRouter();
     const [phone, setPhone] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -433,72 +435,72 @@ export default function AuthScreen() {
 
                         {/* Email Input (sign-up always, sign-in when email mode) */}
                         {(!usePhone || isSignUp) && (
-                        <View
-                            style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                backgroundColor: "#262626",
-                                borderRadius: 16,
-                                borderWidth: 1,
-                                borderColor: "#333333",
-                                paddingHorizontal: 16,
-                                marginBottom: 14,
-                                height: 56,
-                            }}
-                        >
-                            <Mail size={18} color="#999999" />
-                            <TextInput
+                            <View
                                 style={{
-                                    flex: 1,
-                                    color: "#f5f5f5",
-                                    fontFamily: "Manrope_500Medium",
-                                    fontSize: 15,
-                                    marginLeft: 12,
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    backgroundColor: "#262626",
+                                    borderRadius: 16,
+                                    borderWidth: 1,
+                                    borderColor: "#333333",
+                                    paddingHorizontal: 16,
+                                    marginBottom: 14,
+                                    height: 56,
                                 }}
-                                placeholder="Email address"
-                                placeholderTextColor="#666666"
-                                value={email}
-                                onChangeText={setEmail}
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
-                        </View>
+                            >
+                                <Mail size={18} color="#999999" />
+                                <TextInput
+                                    style={{
+                                        flex: 1,
+                                        color: "#f5f5f5",
+                                        fontFamily: "Manrope_500Medium",
+                                        fontSize: 15,
+                                        marginLeft: 12,
+                                    }}
+                                    placeholder="Email address"
+                                    placeholderTextColor="#666666"
+                                    value={email}
+                                    onChangeText={setEmail}
+                                    keyboardType="email-address"
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                />
+                            </View>
                         )}
 
                         {/* Phone Input (sign-in phone mode only) */}
                         {usePhone && !isSignUp && (
-                        <View
-                            style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                backgroundColor: "#262626",
-                                borderRadius: 16,
-                                borderWidth: 1,
-                                borderColor: "#333333",
-                                paddingHorizontal: 16,
-                                marginBottom: 14,
-                                height: 56,
-                            }}
-                        >
-                            <Phone size={18} color="#999999" />
-                            <TextInput
+                            <View
                                 style={{
-                                    flex: 1,
-                                    color: "#f5f5f5",
-                                    fontFamily: "Manrope_500Medium",
-                                    fontSize: 15,
-                                    marginLeft: 12,
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    backgroundColor: "#262626",
+                                    borderRadius: 16,
+                                    borderWidth: 1,
+                                    borderColor: "#333333",
+                                    paddingHorizontal: 16,
+                                    marginBottom: 14,
+                                    height: 56,
                                 }}
-                                placeholder="(555) 000-0000"
-                                placeholderTextColor="#666666"
-                                value={phoneSignIn}
-                                onChangeText={(v) => setPhoneSignIn(formatPhoneNumber(v))}
-                                keyboardType="phone-pad"
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
-                        </View>
+                            >
+                                <Phone size={18} color="#999999" />
+                                <TextInput
+                                    style={{
+                                        flex: 1,
+                                        color: "#f5f5f5",
+                                        fontFamily: "Manrope_500Medium",
+                                        fontSize: 15,
+                                        marginLeft: 12,
+                                    }}
+                                    placeholder="(555) 000-0000"
+                                    placeholderTextColor="#666666"
+                                    value={phoneSignIn}
+                                    onChangeText={(v) => setPhoneSignIn(formatPhoneNumber(v))}
+                                    keyboardType="phone-pad"
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                />
+                            </View>
                         )}
 
                         {/* Password Input */}
@@ -542,6 +544,35 @@ export default function AuthScreen() {
                                 )}
                             </Pressable>
                         </View>
+
+                        {/* Terms & Privacy Disclaimer (Sign Up Only) */}
+                        {isSignUp && (
+                            <Text
+                                style={{
+                                    fontFamily: "Manrope_500Medium",
+                                    color: "#666666",
+                                    fontSize: 12,
+                                    textAlign: "center",
+                                    marginBottom: 20,
+                                    lineHeight: 18,
+                                }}
+                            >
+                                By continuing, you agree to our{" "}
+                                <Text
+                                    onPress={() => router.push("/terms" as any)}
+                                    style={{ color: "#FF9933", fontFamily: "Manrope_700Bold" }}
+                                >
+                                    Terms of Service
+                                </Text>{" "}
+                                and{" "}
+                                <Text
+                                    onPress={() => router.push("/privacy" as any)}
+                                    style={{ color: "#FF9933", fontFamily: "Manrope_700Bold" }}
+                                >
+                                    Privacy Policy
+                                </Text>.
+                            </Text>
+                        )}
 
                         {/* Action Button */}
                         <Animated.View style={btnStyle}>
@@ -595,12 +626,12 @@ export default function AuthScreen() {
                                 if (Platform.OS !== "web") {
                                     Haptics.selectionAsync();
                                 }
-                        setIsSignUp(!isSignUp);
-                        setPhone("");
-                        setPhoneSignIn("");
-                        setFirstName("");
-                        setLastInitial("");
-                        setUsePhone(false);
+                                setIsSignUp(!isSignUp);
+                                setPhone("");
+                                setPhoneSignIn("");
+                                setFirstName("");
+                                setLastInitial("");
+                                setUsePhone(false);
                             }}
                             style={{
                                 marginTop: 20,

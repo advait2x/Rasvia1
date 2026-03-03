@@ -16,13 +16,33 @@ import {
   ShoppingBag,
   Truck,
   UtensilsCrossed,
-  Leaf,
+  CheckCircle2,
+  Flame,
 } from "lucide-react-native";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withSpring,
+  Easing,
+  cancelAnimation,
+} from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
-import { type SupabaseOrder, type OrderStatus, type OrderType, mapOrderToUI, type UIOrder } from "@/lib/restaurant-types";
+import {
+  type SupabaseOrder,
+  type OrderStatus,
+  type OrderType,
+  mapOrderToUI,
+  type UIOrder,
+} from "@/lib/restaurant-types";
+
+// ────────────────────────────────── Constants ──────────────────────────────────
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
   active: "#FF9933",
@@ -33,17 +53,658 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   cancelled: "#EF4444",
 };
 
-const ORDER_TYPE_ICONS: Record<OrderType, any> = {
-  dine_in: UtensilsCrossed,
-  pre_order: Clock,
-  takeout: Truck,
-};
-
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   dine_in: "Dine In",
   pre_order: "Pre-Order",
   takeout: "Takeout",
 };
+
+// The visual steps a consumer cares about
+type TrackingStep = "received" | "preparing" | "ready" | "completed";
+
+const TRACKING_STEPS: {
+  key: TrackingStep;
+  label: string;
+  emoji: string;
+  color: string;
+}[] = [
+    { key: "received", label: "Received", emoji: "📋", color: "#FF9933" },
+    { key: "preparing", label: "Preparing", emoji: "👨‍🍳", color: "#F59E0B" },
+    { key: "ready", label: "Ready", emoji: "🛍️", color: "#22C55E" },
+    { key: "completed", label: "Done", emoji: "🎉", color: "#10B981" },
+  ];
+
+/** Map the database status to our simplified tracking step index */
+function statusToStepIndex(status: OrderStatus): number {
+  switch (status) {
+    case "active":
+      return 0; // received
+    case "preparing":
+      return 1;
+    case "ready":
+      return 2;
+    case "served":
+      return 3; // served = food at your table = done from diner's POV
+    case "completed":
+      return 3;
+    case "cancelled":
+      return -1;
+    default:
+      return 0;
+  }
+}
+
+// ─────────────────────────── Pulsing Dot Component ───────────────────────────
+
+function PulsingDot({ color }: { color: string }) {
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(0.6);
+
+  useEffect(() => {
+    scale.value = withRepeat(
+      withSequence(
+        withTiming(1.5, { duration: 800, easing: Easing.out(Easing.ease) }),
+        withTiming(1, { duration: 800, easing: Easing.in(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 800 }),
+        withTiming(0.4, { duration: 800 })
+      ),
+      -1,
+      false
+    );
+    return () => {
+      cancelAnimation(scale);
+      cancelAnimation(opacity);
+    };
+  }, []);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <View style={{ width: 12, height: 12, alignItems: "center", justifyContent: "center" }}>
+      <Animated.View
+        style={[
+          {
+            width: 12,
+            height: 12,
+            borderRadius: 6,
+            backgroundColor: color,
+            position: "absolute",
+          },
+          animStyle,
+        ]}
+      />
+      <View
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: 3,
+          backgroundColor: color,
+        }}
+      />
+    </View>
+  );
+}
+
+// ─────────────────────────── Progress Stepper ────────────────────────────────
+
+function OrderProgressStepper({ status }: { status: OrderStatus }) {
+  const currentIdx = statusToStepIndex(status);
+  const isCancelled = status === "cancelled";
+
+  if (isCancelled) {
+    return (
+      <View
+        style={{
+          backgroundColor: "rgba(239,68,68,0.08)",
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: "rgba(239,68,68,0.25)",
+          padding: 16,
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <Text style={{ fontSize: 24 }}>❌</Text>
+        <Text
+          style={{
+            fontFamily: "BricolageGrotesque_700Bold",
+            color: "#EF4444",
+            fontSize: 16,
+          }}
+        >
+          Order Cancelled
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ paddingVertical: 8 }}>
+      {/* Step circles and connecting lines */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingHorizontal: 8,
+        }}
+      >
+        {TRACKING_STEPS.map((step, idx) => {
+          const isCompleted = idx < currentIdx;
+          const isActive = idx === currentIdx;
+          const isFuture = idx > currentIdx;
+
+          const circleSize = isActive ? 40 : 32;
+          const bgColor = isCompleted
+            ? step.color
+            : isActive
+              ? `${step.color}25`
+              : "#1a1a1a";
+          const borderColor = isCompleted
+            ? step.color
+            : isActive
+              ? step.color
+              : "#2a2a2a";
+
+          return (
+            <React.Fragment key={step.key}>
+              {/* Connecting line before this step (skip for first) */}
+              {idx > 0 && (
+                <View
+                  style={{
+                    flex: 1,
+                    height: 3,
+                    backgroundColor: isCompleted || isActive ? TRACKING_STEPS[idx - 1].color : "#222",
+                    borderRadius: 2,
+                    marginHorizontal: -2,
+                  }}
+                />
+              )}
+
+              {/* Step circle */}
+              <Animated.View
+                entering={FadeIn.delay(idx * 100).duration(400)}
+                style={{
+                  width: circleSize,
+                  height: circleSize,
+                  borderRadius: circleSize / 2,
+                  backgroundColor: bgColor,
+                  borderWidth: isActive ? 2 : 1,
+                  borderColor: borderColor,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 2,
+                }}
+              >
+                {isCompleted ? (
+                  <CheckCircle2 size={isActive ? 20 : 16} color="#fff" />
+                ) : isActive ? (
+                  <PulsingDot color={step.color} />
+                ) : (
+                  <Text
+                    style={{
+                      fontSize: isActive ? 18 : 14,
+                      opacity: 0.4,
+                    }}
+                  >
+                    {step.emoji}
+                  </Text>
+                )}
+              </Animated.View>
+            </React.Fragment>
+          );
+        })}
+      </View>
+
+      {/* Labels row */}
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          paddingHorizontal: 0,
+          marginTop: 10,
+        }}
+      >
+        {TRACKING_STEPS.map((step, idx) => {
+          const isCompleted = idx < currentIdx;
+          const isActive = idx === currentIdx;
+          return (
+            <View
+              key={`label-${step.key}`}
+              style={{
+                width: 60,
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: isActive
+                    ? "BricolageGrotesque_700Bold"
+                    : "Manrope_500Medium",
+                  fontSize: 11,
+                  color: isActive
+                    ? step.color
+                    : isCompleted
+                      ? "#888"
+                      : "#444",
+                  textAlign: "center",
+                }}
+              >
+                {step.label}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// ─────────────────────────── Status Message ──────────────────────────────────
+
+function getStatusMessage(
+  status: OrderStatus,
+  orderType: OrderType
+): { title: string; subtitle: string } {
+  switch (status) {
+    case "active":
+      return {
+        title: "Order Received!",
+        subtitle: "The restaurant has received your order and will start preparing it shortly.",
+      };
+    case "preparing":
+      return {
+        title: "Being Prepared 👨‍🍳",
+        subtitle: "The kitchen is working on your order right now.",
+      };
+    case "ready":
+      return {
+        title: orderType === "takeout" ? "Ready for Pickup! 🛍️" : "Food is Ready! 🍽️",
+        subtitle:
+          orderType === "takeout"
+            ? "Head to the counter to pick up your order."
+            : "Your food is on its way to your table.",
+      };
+    case "served":
+      return {
+        title: "Served! 🍽️ Enjoy!",
+        subtitle: "Your food has been served. Bon appétit!",
+      };
+    case "completed":
+      return {
+        title: "All Done! 🎉",
+        subtitle: "Thank you for dining with us. We hope you enjoyed your meal!",
+      };
+    case "cancelled":
+      return {
+        title: "Order Cancelled",
+        subtitle: "This order has been cancelled. Contact the restaurant for details.",
+      };
+    default:
+      return { title: "Processing", subtitle: "" };
+  }
+}
+
+// ─────────────────────── Active Order Card ───────────────────────────────────
+
+function ActiveOrderCard({
+  order,
+  index,
+}: {
+  order: UIOrder;
+  index: number;
+}) {
+  const router = useRouter();
+  const statusMsg = getStatusMessage(order.status, order.orderType);
+  const isLive = order.status !== "completed" && order.status !== "cancelled";
+
+  const TypeIcon =
+    order.orderType === "takeout"
+      ? Truck
+      : order.orderType === "pre_order"
+        ? Clock
+        : UtensilsCrossed;
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(80 + index * 60).duration(500).springify()}
+      style={{
+        backgroundColor: "#141414",
+        borderRadius: 22,
+        borderWidth: 1,
+        borderColor: isLive ? `${STATUS_COLORS[order.status]}40` : "#2a2a2a",
+        marginBottom: 16,
+        overflow: "hidden",
+      }}
+    >
+      {/* Glowing top border for active orders */}
+      {isLive && (
+        <View
+          style={{
+            height: 3,
+            backgroundColor: STATUS_COLORS[order.status],
+            borderTopLeftRadius: 22,
+            borderTopRightRadius: 22,
+          }}
+        />
+      )}
+
+      <View style={{ padding: 18 }}>
+        {/* Header: Restaurant + Price */}
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: 4,
+          }}
+        >
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <Text
+              style={{
+                fontFamily: "BricolageGrotesque_700Bold",
+                color: "#f5f5f5",
+                fontSize: 20,
+                letterSpacing: -0.3,
+              }}
+              numberOfLines={1}
+            >
+              {order.restaurantName}
+            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                marginTop: 4,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  backgroundColor: "#1a1a1a",
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: "#2a2a2a",
+                }}
+              >
+                <TypeIcon size={11} color="#777" />
+                <Text
+                  style={{
+                    fontFamily: "Manrope_600SemiBold",
+                    color: "#777",
+                    fontSize: 11,
+                  }}
+                >
+                  {ORDER_TYPE_LABELS[order.orderType]}
+                </Text>
+              </View>
+              <Text
+                style={{
+                  fontFamily: "Manrope_500Medium",
+                  color: "#555",
+                  fontSize: 11,
+                }}
+              >
+                {new Date(order.createdAt).toLocaleTimeString("en-US", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </Text>
+            </View>
+          </View>
+          <View style={{ alignItems: "flex-end" }}>
+            <Text
+              style={{
+                fontFamily: "BricolageGrotesque_700Bold",
+                color: "#f5f5f5",
+                fontSize: 20,
+              }}
+            >
+              ${order.subtotal.toFixed(2)}
+            </Text>
+            {order.items.length > 0 && (
+              <Text
+                style={{
+                  fontFamily: "Manrope_500Medium",
+                  color: "#555",
+                  fontSize: 11,
+                  marginTop: 2,
+                }}
+              >
+                {order.items.length} item{order.items.length !== 1 ? "s" : ""}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* Progress Stepper */}
+        <View style={{ marginTop: 12, marginBottom: 8 }}>
+          <OrderProgressStepper status={order.status} />
+        </View>
+
+        {/* Status message */}
+        <View
+          style={{
+            backgroundColor: `${STATUS_COLORS[order.status]}10`,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: `${STATUS_COLORS[order.status]}20`,
+            padding: 14,
+            marginTop: 4,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "BricolageGrotesque_700Bold",
+              color: STATUS_COLORS[order.status],
+              fontSize: 15,
+              marginBottom: 3,
+            }}
+          >
+            {statusMsg.title}
+          </Text>
+          <Text
+            style={{
+              fontFamily: "Manrope_500Medium",
+              color: "#999",
+              fontSize: 13,
+              lineHeight: 19,
+            }}
+          >
+            {statusMsg.subtitle}
+          </Text>
+        </View>
+
+        {/* Items summary */}
+        <Text
+          style={{
+            fontFamily: "Manrope_500Medium",
+            color: "#555",
+            fontSize: 12,
+            marginTop: 12,
+          }}
+          numberOfLines={2}
+        >
+          {order.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+// ─────────────────────── Past Order Card (compact) ───────────────────────────
+
+function PastOrderCard({
+  order,
+  index,
+}: {
+  order: UIOrder;
+  index: number;
+}) {
+  const statusColor = STATUS_COLORS[order.status];
+  const TypeIcon =
+    order.orderType === "takeout"
+      ? Truck
+      : order.orderType === "pre_order"
+        ? Clock
+        : UtensilsCrossed;
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(60 + index * 40).duration(400)}
+    >
+      <View
+        style={{
+          backgroundColor: "#141414",
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: "#1e1e1e",
+          padding: 14,
+          marginBottom: 10,
+        }}
+      >
+        {/* Header */}
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: 6,
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontFamily: "BricolageGrotesque_700Bold",
+                color: "#f5f5f5",
+                fontSize: 16,
+              }}
+              numberOfLines={1}
+            >
+              {order.restaurantName}
+            </Text>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 }}
+            >
+              <Clock size={10} color="#555" />
+              <Text
+                style={{
+                  fontFamily: "Manrope_500Medium",
+                  color: "#555",
+                  fontSize: 11,
+                }}
+              >
+                {formatDate(order.createdAt)}
+              </Text>
+            </View>
+          </View>
+          <Text
+            style={{
+              fontFamily: "BricolageGrotesque_700Bold",
+              color: "#ccc",
+              fontSize: 16,
+            }}
+          >
+            ${order.subtotal.toFixed(2)}
+          </Text>
+        </View>
+
+        {/* Items */}
+        <Text
+          style={{
+            fontFamily: "Manrope_500Medium",
+            color: "#555",
+            fontSize: 12,
+            marginBottom: 8,
+          }}
+          numberOfLines={1}
+        >
+          {order.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
+        </Text>
+
+        {/* Footer */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 5,
+              backgroundColor: "#0f0f0f",
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: "#1e1e1e",
+            }}
+          >
+            <TypeIcon size={11} color="#666" />
+            <Text
+              style={{
+                fontFamily: "Manrope_600SemiBold",
+                color: "#666",
+                fontSize: 11,
+              }}
+            >
+              {ORDER_TYPE_LABELS[order.orderType]}
+            </Text>
+          </View>
+          <View
+            style={{
+              backgroundColor: `${statusColor}15`,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: `${statusColor}30`,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "Manrope_700Bold",
+                color: statusColor,
+                fontSize: 10,
+                textTransform: "uppercase",
+              }}
+            >
+              {order.status}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
+// ─────────────────────── Main Screen ─────────────────────────────────────────
 
 export default function MyOrdersScreen() {
   const router = useRouter();
@@ -82,29 +743,73 @@ export default function MyOrdersScreen() {
     }
   }, [session?.user?.id]);
 
+  // Initial fetch
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
 
+  // ── Real-time subscription for live order updates ──
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const channel = supabase
+      .channel("my-orders-live")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders" },
+        (payload) => {
+          // When an order is updated, refresh the list
+          // We could do optimistic updates here, but a full refresh
+          // ensures consistency and is fast enough
+          fetchOrders();
+
+          // Haptic feedback when status changes
+          if (Platform.OS !== "web") {
+            const newStatus = (payload.new as any)?.status;
+            if (newStatus === "ready" || newStatus === "served") {
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Success
+              );
+            } else if (newStatus === "preparing") {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id, fetchOrders]);
+
   const onRefresh = useCallback(() => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS !== "web")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setRefreshing(true);
     fetchOrders();
   }, [fetchOrders]);
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  };
+  // Split into active vs past
+  // Keep recently completed/served orders in active so user sees the "Done" step
+  const DONE_VISIBLE_MS = 15 * 60 * 1000; // 15 minutes
+  const now = Date.now();
+  const activeOrders = orders.filter((o) => {
+    if (o.status === "cancelled") return false;
+    if (o.status === "completed") {
+      // Show completed orders in active section for 15 min so user sees the Done step
+      const closedTime = o.closedAt ? new Date(o.closedAt).getTime() : 0;
+      const createdTime = new Date(o.createdAt).getTime();
+      const refTime = closedTime || createdTime;
+      return now - refTime < DONE_VISIBLE_MS;
+    }
+    return true; // active, preparing, ready, served all stay in active
+  });
+  const pastOrders = orders.filter(
+    (o) =>
+      (o.status === "completed" && !activeOrders.some((a) => a.id === o.id)) ||
+      o.status === "cancelled"
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: "#0f0f0f" }}>
@@ -112,11 +817,18 @@ export default function MyOrdersScreen() {
         {/* Header */}
         <Animated.View
           entering={FadeIn.duration(400)}
-          style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16 }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 20,
+            paddingTop: 8,
+            paddingBottom: 16,
+          }}
         >
           <Pressable
             onPress={() => {
-              if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              if (Platform.OS !== "web")
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.back();
             }}
             style={{
@@ -133,20 +845,51 @@ export default function MyOrdersScreen() {
           >
             <ArrowLeft size={22} color="#f5f5f5" />
           </Pressable>
-          <Text
-            style={{
-              fontFamily: "BricolageGrotesque_800ExtraBold",
-              color: "#f5f5f5",
-              fontSize: 28,
-              letterSpacing: -0.5,
-            }}
-          >
-            My Orders
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontFamily: "BricolageGrotesque_800ExtraBold",
+                color: "#f5f5f5",
+                fontSize: 28,
+                letterSpacing: -0.5,
+              }}
+            >
+              My Orders
+            </Text>
+          </View>
+          {activeOrders.length > 0 && (
+            <Animated.View
+              entering={FadeIn.duration(300)}
+              style={{
+                backgroundColor: "rgba(255,153,51,0.15)",
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "rgba(255,153,51,0.3)",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <Flame size={12} color="#FF9933" />
+              <Text
+                style={{
+                  fontFamily: "Manrope_700Bold",
+                  color: "#FF9933",
+                  fontSize: 12,
+                }}
+              >
+                {activeOrders.length} Live
+              </Text>
+            </Animated.View>
+          )}
         </Animated.View>
 
         {loading ? (
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <View
+            style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+          >
             <ActivityIndicator color="#FF9933" size="large" />
           </View>
         ) : (
@@ -162,113 +905,166 @@ export default function MyOrdersScreen() {
             }
           >
             {orders.length === 0 ? (
+              /* ── Empty State ── */
               <Animated.View
                 entering={FadeInDown.delay(100).duration(500)}
-                style={{ alignItems: "center", justifyContent: "center", marginTop: 60 }}
+                style={{
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: 60,
+                }}
               >
-                <View style={{
-                  width: 80, height: 80, borderRadius: 40, backgroundColor: "#1a1a1a",
-                  alignItems: "center", justifyContent: "center", marginBottom: 16,
-                  borderWidth: 1, borderColor: "#2a2a2a",
-                }}>
+                <View
+                  style={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 40,
+                    backgroundColor: "#1a1a1a",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: 16,
+                    borderWidth: 1,
+                    borderColor: "#2a2a2a",
+                  }}
+                >
                   <ShoppingBag size={32} color="#666" />
                 </View>
-                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 20, marginBottom: 8 }}>
+                <Text
+                  style={{
+                    fontFamily: "BricolageGrotesque_700Bold",
+                    color: "#f5f5f5",
+                    fontSize: 20,
+                    marginBottom: 8,
+                  }}
+                >
                   No orders yet
                 </Text>
-                <Text style={{ fontFamily: "Manrope_500Medium", color: "#999", fontSize: 15, textAlign: "center" }}>
-                  Your dine-in, takeout, and pre-orders will appear here.
+                <Text
+                  style={{
+                    fontFamily: "Manrope_500Medium",
+                    color: "#999",
+                    fontSize: 15,
+                    textAlign: "center",
+                    lineHeight: 22,
+                  }}
+                >
+                  Your dine-in, takeout, and pre-orders{"\n"}will appear here.
                 </Text>
+                <Pressable
+                  onPress={() => {
+                    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push("/");
+                  }}
+                  style={{
+                    marginTop: 24,
+                    backgroundColor: "#FF9933",
+                    paddingHorizontal: 24,
+                    paddingVertical: 14,
+                    borderRadius: 14,
+                    shadowColor: "#FF9933",
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 12,
+                    elevation: 8,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "BricolageGrotesque_700Bold",
+                      color: "#0f0f0f",
+                      fontSize: 16,
+                    }}
+                  >
+                    Browse Restaurants
+                  </Text>
+                </Pressable>
               </Animated.View>
             ) : (
-              orders.map((order, index) => {
-                const statusColor = STATUS_COLORS[order.status];
-                const TypeIcon = ORDER_TYPE_ICONS[order.orderType];
-                return (
-                  <Animated.View
-                    key={order.id}
-                    entering={FadeInDown.delay(80 + index * 50).duration(500)}
-                  >
-                    <Pressable
-                      onPress={() => {
-                        if (Platform.OS !== "web") Haptics.selectionAsync();
-                      }}
+              <>
+                {/* ── Active Orders Section ── */}
+                {activeOrders.length > 0 && (
+                  <View style={{ marginBottom: 24 }}>
+                    <Animated.View
+                      entering={FadeIn.duration(300)}
                       style={{
-                        backgroundColor: "#1a1a1a",
-                        borderRadius: 18,
-                        borderWidth: 1,
-                        borderColor: "#2a2a2a",
-                        padding: 16,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 8,
                         marginBottom: 14,
                       }}
                     >
-                      {/* Header row */}
-                      <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 18, marginBottom: 3 }}
-                            numberOfLines={1}
-                          >
-                            {order.restaurantName}
-                          </Text>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                            <Clock size={11} color="#777" />
-                            <Text style={{ fontFamily: "Manrope_500Medium", color: "#777", fontSize: 12 }}>
-                              {formatDate(order.createdAt)} · {formatTime(order.createdAt)}
-                              {order.customerName ? ` · ${order.customerName}` : ""}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={{ alignItems: "flex-end" }}>
-                          <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 18 }}>
-                            ${order.subtotal.toFixed(2)}
-                          </Text>
-                          {order.tipAmount > 0 && (
-                            <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11 }}>
-                              +${order.tipAmount.toFixed(2)} tip
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-
-                      {/* Items summary */}
+                      <View
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 4,
+                          backgroundColor: "#FF9933",
+                        }}
+                      />
                       <Text
-                        style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 13, marginBottom: 10 }}
-                        numberOfLines={2}
+                        style={{
+                          fontFamily: "BricolageGrotesque_700Bold",
+                          color: "#f5f5f5",
+                          fontSize: 18,
+                          letterSpacing: -0.3,
+                        }}
                       >
-                        {order.items.map(i => `${i.quantity}× ${i.name}`).join(", ")}
+                        Active Orders
                       </Text>
+                    </Animated.View>
+                    {activeOrders.map((order, idx) => (
+                      <ActiveOrderCard
+                        key={order.id}
+                        order={order}
+                        index={idx}
+                      />
+                    ))}
+                  </View>
+                )}
 
-                      {/* Footer: type + status */}
-                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#0f0f0f", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: "#2a2a2a" }}>
-                          <TypeIcon size={12} color="#888" />
-                          <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#888", fontSize: 12 }}>
-                            {ORDER_TYPE_LABELS[order.orderType]}
-                          </Text>
-                          {order.tableNumber !== "—" && (
-                            <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11 }}>
-                              · Table {order.tableNumber}
-                            </Text>
-                          )}
-                        </View>
-                        <View style={{
-                          backgroundColor: `${statusColor}20`,
-                          paddingHorizontal: 10,
-                          paddingVertical: 5,
-                          borderRadius: 10,
-                          borderWidth: 1,
-                          borderColor: `${statusColor}50`,
-                        }}>
-                          <Text style={{ fontFamily: "Manrope_700Bold", color: statusColor, fontSize: 11, textTransform: "uppercase" }}>
-                            {order.status}
-                          </Text>
-                        </View>
-                      </View>
-                    </Pressable>
-                  </Animated.View>
-                );
-              })
+                {/* ── Past Orders Section ── */}
+                {pastOrders.length > 0 && (
+                  <View>
+                    <Animated.View
+                      entering={FadeIn.delay(200).duration(300)}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 8,
+                        marginBottom: 14,
+                      }}
+                    >
+                      <Clock size={14} color="#555" />
+                      <Text
+                        style={{
+                          fontFamily: "BricolageGrotesque_700Bold",
+                          color: "#888",
+                          fontSize: 16,
+                          letterSpacing: -0.3,
+                        }}
+                      >
+                        Past Orders
+                      </Text>
+                      <Text
+                        style={{
+                          fontFamily: "Manrope_500Medium",
+                          color: "#444",
+                          fontSize: 12,
+                        }}
+                      >
+                        ({pastOrders.length})
+                      </Text>
+                    </Animated.View>
+                    {pastOrders.map((order, idx) => (
+                      <PastOrderCard
+                        key={order.id}
+                        order={order}
+                        index={idx}
+                      />
+                    ))}
+                  </View>
+                )}
+              </>
             )}
           </ScrollView>
         )}

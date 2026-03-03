@@ -8,10 +8,10 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Clipboard,
   TextInput,
   Image,
 } from "react-native";
+import * as ExpoClipboard from "expo-clipboard";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Stack } from "expo-router";
@@ -176,8 +176,8 @@ export default function HostPartyScreen() {
       const matchName = r.name ? r.name.toLowerCase().includes(q) : false;
       const matchTag = Array.isArray(r.cuisine_tags)
         ? r.cuisine_tags.some(
-            (t) => typeof t === "string" && t.toLowerCase().includes(q),
-          )
+          (t) => typeof t === "string" && t.toLowerCase().includes(q),
+        )
         : false;
       return matchName || matchTag;
     })
@@ -313,7 +313,7 @@ export default function HostPartyScreen() {
     if (Platform.OS === "web") {
       await navigator.clipboard?.writeText(shareUrl);
     } else {
-      Clipboard.setString(shareUrl);
+      await ExpoClipboard.setStringAsync(shareUrl);
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -327,7 +327,7 @@ export default function HostPartyScreen() {
         message: `Join my group order at ${selectedRestaurant?.name}! 🍽️\n${shareUrl}`,
         url: shareUrl,
       });
-    } catch {}
+    } catch { }
   };
 
   const handleJoinAsHost = () => {
@@ -598,126 +598,126 @@ export default function HostPartyScreen() {
                         key={r.id}
                       >
                         <View style={{ opacity: isClosed ? 0.5 : 1 }}>
-                        <Pressable
-                          onPress={() => handleSelectRestaurant(r)}
-                          disabled={isClosed}
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            marginHorizontal: 16,
-                            marginVertical: 4,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
-                            borderRadius: 14,
-                            backgroundColor: isSelected
-                              ? "rgba(255,153,51,0.12)"
-                              : "#141414",
-                            borderWidth: 1,
-                            borderColor: isSelected ? "#FF9933" : "#1e1e1e",
-                            gap: 12,
-                          }}
-                        >
-                          {/* Restaurant image */}
-                          {r.image_url ? (
-                            <Image
-                              source={{ uri: r.image_url }}
-                              style={{
-                                width: 52,
-                                height: 52,
-                                borderRadius: 10,
-                                backgroundColor: "#1e1e1e",
-                              }}
-                              resizeMode="cover"
-                            />
-                          ) : (
-                            <View
-                              style={{
-                                width: 52,
-                                height: 52,
-                                borderRadius: 10,
-                                backgroundColor: "#1e1e1e",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <UtensilsCrossed size={22} color="#333" />
-                            </View>
-                          )}
+                          <Pressable
+                            onPress={() => handleSelectRestaurant(r)}
+                            disabled={isClosed}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              marginHorizontal: 16,
+                              marginVertical: 4,
+                              paddingHorizontal: 12,
+                              paddingVertical: 10,
+                              borderRadius: 14,
+                              backgroundColor: isSelected
+                                ? "rgba(255,153,51,0.12)"
+                                : "#141414",
+                              borderWidth: 1,
+                              borderColor: isSelected ? "#FF9933" : "#1e1e1e",
+                              gap: 12,
+                            }}
+                          >
+                            {/* Restaurant image */}
+                            {r.image_url ? (
+                              <Image
+                                source={{ uri: r.image_url }}
+                                style={{
+                                  width: 52,
+                                  height: 52,
+                                  borderRadius: 10,
+                                  backgroundColor: "#1e1e1e",
+                                }}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <View
+                                style={{
+                                  width: 52,
+                                  height: 52,
+                                  borderRadius: 10,
+                                  backgroundColor: "#1e1e1e",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <UtensilsCrossed size={22} color="#333" />
+                              </View>
+                            )}
 
-                          {/* Name + cuisine */}
-                          <View style={{ flex: 1 }}>
-                            <Text
-                              style={{
-                                fontFamily: "BricolageGrotesque_700Bold",
-                                color: "#f5f5f5",
-                                fontSize: 15,
-                                letterSpacing: -0.2,
-                              }}
-                              numberOfLines={1}
-                            >
-                              {r.name}
-                            </Text>
-                            {r.cuisine_tags?.length > 0 && (
+                            {/* Name + cuisine */}
+                            <View style={{ flex: 1 }}>
                               <Text
                                 style={{
-                                  fontFamily: "Manrope_500Medium",
-                                  color: "#666",
-                                  fontSize: 12,
-                                  marginTop: 2,
+                                  fontFamily: "BricolageGrotesque_700Bold",
+                                  color: "#f5f5f5",
+                                  fontSize: 15,
+                                  letterSpacing: -0.2,
                                 }}
                                 numberOfLines={1}
                               >
-                                {r.cuisine_tags.join(" · ")}
+                                {r.name}
                               </Text>
-                            )}
-                          </View>
-
-                          {/* Wait time */}
-                          <View style={{ alignItems: "flex-end", gap: 4 }}>
-                            <View
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                gap: 4,
-                              }}
-                            >
-                              <Clock size={11} color={wt.color} />
-                              <Text
-                                style={{
-                                  fontFamily: "Manrope_600SemiBold",
-                                  color: wt.color,
-                                  fontSize: 12,
-                                }}
-                              >
-                                {wt.text}
-                              </Text>
-                            </View>
-
-                            {/* Check circle */}
-                            <View
-                              style={{
-                                width: 20,
-                                height: 20,
-                                borderRadius: 10,
-                                borderWidth: 2,
-                                borderColor: isSelected ? "#FF9933" : "#333",
-                                backgroundColor: isSelected
-                                  ? "#FF9933"
-                                  : "transparent",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              {isSelected && (
-                                <Check
-                                  size={11}
-                                  color="#0f0f0f"
-                                  strokeWidth={3}
-                                />
+                              {r.cuisine_tags?.length > 0 && (
+                                <Text
+                                  style={{
+                                    fontFamily: "Manrope_500Medium",
+                                    color: "#666",
+                                    fontSize: 12,
+                                    marginTop: 2,
+                                  }}
+                                  numberOfLines={1}
+                                >
+                                  {r.cuisine_tags.join(" · ")}
+                                </Text>
                               )}
                             </View>
-                          </View>
-                        </Pressable>
+
+                            {/* Wait time */}
+                            <View style={{ alignItems: "flex-end", gap: 4 }}>
+                              <View
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 4,
+                                }}
+                              >
+                                <Clock size={11} color={wt.color} />
+                                <Text
+                                  style={{
+                                    fontFamily: "Manrope_600SemiBold",
+                                    color: wt.color,
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  {wt.text}
+                                </Text>
+                              </View>
+
+                              {/* Check circle */}
+                              <View
+                                style={{
+                                  width: 20,
+                                  height: 20,
+                                  borderRadius: 10,
+                                  borderWidth: 2,
+                                  borderColor: isSelected ? "#FF9933" : "#333",
+                                  backgroundColor: isSelected
+                                    ? "#FF9933"
+                                    : "transparent",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {isSelected && (
+                                  <Check
+                                    size={11}
+                                    color="#0f0f0f"
+                                    strokeWidth={3}
+                                  />
+                                )}
+                              </View>
+                            </View>
+                          </Pressable>
                         </View>
                       </View>
                     );

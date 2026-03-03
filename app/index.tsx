@@ -40,6 +40,7 @@ import { useAdminMode } from "@/hooks/useAdminMode";
 import { useAuth } from "@/lib/auth-context";
 import { useNotifications } from "@/lib/notifications-context";
 import { useClosedRestaurantIds } from "@/hooks/useClosedRestaurantIds";
+import { usePersonalization } from "@/hooks/usePersonalization";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -62,6 +63,7 @@ export default function DiscoveryFeed() {
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [showSearch, setShowSearch] = useState(false);
   const [activeGroupOrder, setActiveGroupOrder] = useState<ActiveGroupOrder | null>(null);
+  const personalization = usePersonalization();
 
   // ==================================================
   // STATE MANAGEMENT - Replace Mock Data
@@ -670,6 +672,108 @@ export default function DiscoveryFeed() {
                 />
               ))}
           </ScrollView>
+
+          {/* ── ORDER AGAIN ── */}
+          {!personalization.loading && personalization.orderedRestaurantIds.length > 0 && (() => {
+            const orderAgainRestaurants = personalization.orderedRestaurantIds
+              .map((rid) => restaurantsWithHoursStatus.find((r) => r.id === rid))
+              .filter(Boolean) as typeof restaurantsWithHoursStatus;
+            if (orderAgainRestaurants.length === 0) return null;
+            return (
+              <Animated.View entering={FadeInDown.delay(450).duration(500)}>
+                <View className="px-5 mt-8 mb-4">
+                  <View className="flex-row items-center mb-1">
+                    <Text style={{ fontSize: 18 }}>🔄</Text>
+                    <Text style={{ fontFamily: "BricolageGrotesque_800ExtraBold", color: "#f5f5f5", fontSize: 24, marginLeft: 8 }}>
+                      Order Again
+                    </Text>
+                  </View>
+                  <Text style={{ fontFamily: "Manrope_500Medium", color: "#999999", fontSize: 14, marginTop: 2 }}>
+                    Your go-to spots
+                  </Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 12, paddingBottom: 4 }}>
+                  {orderAgainRestaurants.slice(0, 6).map((restaurant) => {
+                    const lastOrder = personalization.lastOrderByRestaurant[restaurant.id];
+                    return (
+                      <Pressable
+                        key={restaurant.id}
+                        onPress={() => handleRestaurantPress(restaurant.id)}
+                        style={{
+                          backgroundColor: "#141414",
+                          borderRadius: 18,
+                          borderWidth: 1,
+                          borderColor: "#2a2a2a",
+                          padding: 14,
+                          width: 200,
+                        }}
+                      >
+                        <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 15, marginBottom: 4 }} numberOfLines={1}>
+                          {restaurant.name}
+                        </Text>
+                        {lastOrder?.itemsSummary ? (
+                          <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11, marginBottom: 10 }} numberOfLines={2}>
+                            Last: {lastOrder.itemsSummary}
+                          </Text>
+                        ) : null}
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                          <View style={{ backgroundColor: "rgba(255,153,51,0.1)", borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,153,51,0.25)", paddingHorizontal: 8, paddingVertical: 4 }}>
+                            <Text style={{ fontFamily: "Manrope_700Bold", color: "#FF9933", fontSize: 11 }}>Order Again →</Text>
+                          </View>
+                          {restaurant.waitTime >= 0 && restaurant.waitTime < 999 && (
+                            <Text style={{ fontFamily: "Manrope_500Medium", color: "#555", fontSize: 11 }}>{restaurant.waitTime}m wait</Text>
+                          )}
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </Animated.View>
+            );
+          })()}
+
+          {/* ── YOU MAY LIKE ── */}
+          {!personalization.loading && personalization.topCuisineTags.length >= 1 && (() => {
+            const visitedIds = new Set(personalization.orderedRestaurantIds);
+            const recommendations = restaurantsWithHoursStatus
+              .filter((r) => (isAdmin || r.isEnabled) && !visitedIds.has(r.id))
+              .filter((r) =>
+                // Score: how many of the restaurant's tags overlap with user's top tags
+                r.tags.some((tag) => personalization.topCuisineTags.includes(tag))
+              )
+              .sort((a, b) => {
+                const scoreA = a.tags.filter((t) => personalization.topCuisineTags.includes(t)).length;
+                const scoreB = b.tags.filter((t) => personalization.topCuisineTags.includes(t)).length;
+                return scoreB - scoreA;
+              })
+              .slice(0, 6);
+            if (recommendations.length === 0) return null;
+            return (
+              <Animated.View entering={FadeInDown.delay(500).duration(500)}>
+                <View className="px-5 mt-8 mb-4">
+                  <View className="flex-row items-center mb-1">
+                    <Text style={{ fontSize: 18 }}>✨</Text>
+                    <Text style={{ fontFamily: "BricolageGrotesque_800ExtraBold", color: "#f5f5f5", fontSize: 24, marginLeft: 8 }}>
+                      You May Like
+                    </Text>
+                  </View>
+                  <Text style={{ fontFamily: "Manrope_500Medium", color: "#999999", fontSize: 14, marginTop: 2 }}>
+                    Based on your taste in {personalization.topCuisineTags.slice(0, 2).join(" & ")}
+                  </Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}>
+                  {recommendations.map((restaurant, index) => (
+                    <RestaurantListCard
+                      key={restaurant.id}
+                      restaurant={restaurant}
+                      index={index}
+                      onPress={() => handleRestaurantPress(restaurant.id)}
+                    />
+                  ))}
+                </ScrollView>
+              </Animated.View>
+            );
+          })()}
 
           {/* Popular Cuisines */}
           <Animated.View entering={FadeInDown.delay(500).duration(500)}>

@@ -38,6 +38,9 @@ yarn-error.*
 
 app-example
 
+# binaries
+ngrok.exe
+
 **/tempobook/dynamic/
 **/tempobook/storyboards/
 **/tempobook/**

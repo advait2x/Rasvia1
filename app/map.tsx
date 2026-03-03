@@ -82,10 +82,10 @@ const STATUS_BG: Record<string, string> = {
 
 // Default region (fallback if location unavailable)
 const DEFAULT_REGION: Region = {
-  latitude: 40.4237,
-  longitude: -86.9212,
-  latitudeDelta: 0.02,
-  longitudeDelta: 0.02,
+  latitude: 32.7767,
+  longitude: -96.7970,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
 };
 
 // ==============================
@@ -165,7 +165,7 @@ export default function MapScreen() {
   const [loading, setLoading] = useState(true);
   const [mapCenter, setMapCenter] = useState<Region>(DEFAULT_REGION);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newRestCoords, setNewRestCoords] = useState<{lat: number, lng: number} | null>(null);
+  const [newRestCoords, setNewRestCoords] = useState<{ lat: number, lng: number } | null>(null);
   const [adminPanelRestaurant, setAdminPanelRestaurant] = useState<UIRestaurant | null>(null);
   const [isSettingLocation, setIsSettingLocation] = useState(false);
   const [restaurantBeingMoved, setRestaurantBeingMoved] = useState<UIRestaurant | null>(null);
@@ -186,7 +186,7 @@ export default function MapScreen() {
     setShowMapSearch(false);
     setShowNearbyList(false);
   };
-  
+
   const { userCoords: userLocation, isLiveLocationEnabled } = useLocation();
   const { targetLat, targetLng, restaurantId } = useLocalSearchParams<{ targetLat?: string; targetLng?: string; restaurantId?: string }>();
   const hasCenteredRef = useRef(false);
@@ -291,7 +291,7 @@ export default function MapScreen() {
     if (restaurantId && restaurants.length > 0) {
       const targetRest = restaurants.find((r) => r.id === restaurantId);
       if (targetRest && !selectedRestaurant) {
-         setSelectedRestaurant(targetRest);
+        setSelectedRestaurant(targetRest);
       }
     }
   }, [restaurantId, restaurants]);
@@ -544,20 +544,20 @@ export default function MapScreen() {
         {/* User Home Location Pin (if live disabled) */}
         {!isLiveLocationEnabled && userLocation && (
           <Marker coordinate={userLocation} zIndex={100} tracksViewChanges={false}>
-             <View style={{
-               backgroundColor: "#FF9933",
-               padding: 6,
-               borderRadius: 16,
-               borderWidth: 2,
-               borderColor: "#0f0f0f",
-               shadowColor: "#000",
-               shadowOffset: { width: 0, height: 2 },
-               shadowOpacity: 0.3,
-               shadowRadius: 4,
-               elevation: 5,
-             }}>
-               <Home size={16} color="#0f0f0f" strokeWidth={2.5} />
-             </View>
+            <View style={{
+              backgroundColor: "#FF9933",
+              padding: 6,
+              borderRadius: 16,
+              borderWidth: 2,
+              borderColor: "#0f0f0f",
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.3,
+              shadowRadius: 4,
+              elevation: 5,
+            }}>
+              <Home size={16} color="#0f0f0f" strokeWidth={2.5} />
+            </View>
           </Marker>
         )}
 
@@ -1302,10 +1302,10 @@ function SelectedRestaurantCard({
                   {isClosed
                     ? "Closed"
                     : restaurant.waitStatus === "darkgrey"
-                    ? "Closed"
-                    : restaurant.waitTime < 0
-                    ? "-- min"
-                    : `${restaurant.waitTime} min`}
+                      ? "Closed"
+                      : restaurant.waitTime < 0
+                        ? "-- min"
+                        : `${restaurant.waitTime} min`}
                 </Text>
               </View>
             </View>
@@ -1480,14 +1480,14 @@ function NearbyListOverlay({
           >
             Nearby Restaurants
           </Text>
-          <View style={{ 
-            marginLeft: 8, 
-            backgroundColor: "rgba(255,153,51,0.15)", 
-            borderWidth: 1, 
-            borderColor: "#FF9933", 
-            borderRadius: 6, 
-            paddingHorizontal: 6, 
-            paddingVertical: 2 
+          <View style={{
+            marginLeft: 8,
+            backgroundColor: "rgba(255,153,51,0.15)",
+            borderWidth: 1,
+            borderColor: "#FF9933",
+            borderRadius: 6,
+            paddingHorizontal: 6,
+            paddingVertical: 2
           }}>
             <Text style={{ color: "#FF9933", fontFamily: "JetBrainsMono_600SemiBold", fontSize: 12 }}>
               {restaurants.length}
@@ -1527,95 +1527,95 @@ function NearbyListOverlay({
             return aClosed - bClosed;
           })
           .map((r, i) => {
-          const isClosed = closedRestaurantIds.has(r.id);
-          const displayStatus = (isClosed ? 'darkgrey' : r.waitStatus) as typeof r.waitStatus;
-          return (<Pressable
-            key={r.id}
-            onPress={() => {
-              if (Platform.OS !== "web") {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }
-              onSelect(r);
-            }}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              paddingVertical: 12,
-              borderTopWidth: i > 0 ? 1 : 0,
-              borderTopColor: "#2a2a2a",
-            }}
-          >
-            {/* Image */}
-            <Image
-              source={{ uri: r.image }}
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: "#2a2a2a",
+            const isClosed = closedRestaurantIds.has(r.id);
+            const displayStatus = (isClosed ? 'darkgrey' : r.waitStatus) as typeof r.waitStatus;
+            return (<Pressable
+              key={r.id}
+              onPress={() => {
+                if (Platform.OS !== "web") {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                onSelect(r);
               }}
-              resizeMode="cover"
-            />
-            {/* Info */}
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text
-                numberOfLines={1}
-                style={{
-                  fontFamily: "BricolageGrotesque_700Bold",
-                  color: "#f5f5f5",
-                  fontSize: 15,
-                  letterSpacing: -0.2,
-                  marginBottom: 2,
-                }}
-              >
-                {r.name}
-              </Text>
-              <Text
-                numberOfLines={1}
-                style={{
-                  fontFamily: "Manrope_500Medium",
-                  color: "#999999",
-                  fontSize: 12,
-                }}
-              >
-                {r.cuisine}
-              </Text>
-            </View>
-            {/* Wait badge */}
-            <View
               style={{
-                backgroundColor: STATUS_BG[displayStatus],
-                borderRadius: 12,
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                marginLeft: 8,
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: 12,
+                borderTopWidth: i > 0 ? 1 : 0,
+                borderTopColor: "#2a2a2a",
               }}
             >
-              <Text
+              {/* Image */}
+              <Image
+                source={{ uri: r.image }}
                 style={{
-                  fontFamily: "JetBrainsMono_600SemiBold",
-                  color: STATUS_COLORS[displayStatus],
-                  fontSize: 11,
+                  width: 48,
+                  height: 48,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: "#2a2a2a",
+                }}
+                resizeMode="cover"
+              />
+              {/* Info */}
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontFamily: "BricolageGrotesque_700Bold",
+                    color: "#f5f5f5",
+                    fontSize: 15,
+                    letterSpacing: -0.2,
+                    marginBottom: 2,
+                  }}
+                >
+                  {r.name}
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontFamily: "Manrope_500Medium",
+                    color: "#999999",
+                    fontSize: 12,
+                  }}
+                >
+                  {r.cuisine}
+                </Text>
+              </View>
+              {/* Wait badge */}
+              <View
+                style={{
+                  backgroundColor: STATUS_BG[displayStatus],
+                  borderRadius: 12,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  marginLeft: 8,
                 }}
               >
-                {displayStatus === 'darkgrey' ? 'Closed' : r.waitTime < 0 ? '--' : `${r.waitTime}m`}
-              </Text>
-            </View>
-            {/* Distance */}
-            <View style={{ marginLeft: 8 }}>
-              <Text
-                style={{
-                  fontFamily: "Manrope_500Medium",
-                  color: "#999999",
-                  fontSize: 11,
-                }}
-              >
-                {r.distance}
-              </Text>
-            </View>
-          </Pressable>);
-        })}
+                <Text
+                  style={{
+                    fontFamily: "JetBrainsMono_600SemiBold",
+                    color: STATUS_COLORS[displayStatus],
+                    fontSize: 11,
+                  }}
+                >
+                  {displayStatus === 'darkgrey' ? 'Closed' : r.waitTime < 0 ? '--' : `${r.waitTime}m`}
+                </Text>
+              </View>
+              {/* Distance */}
+              <View style={{ marginLeft: 8 }}>
+                <Text
+                  style={{
+                    fontFamily: "Manrope_500Medium",
+                    color: "#999999",
+                    fontSize: 11,
+                  }}
+                >
+                  {r.distance}
+                </Text>
+              </View>
+            </Pressable>);
+          })}
       </ScrollView>
     </RNAnimated.View>
   );
@@ -1777,7 +1777,7 @@ function MapSearchOverlay({
           r.cuisine.toLowerCase().includes(q)
       );
     }
-    
+
     // Primary: open first, closed last
     // Secondary: selected sort option within each group
     list.sort((a, b) => {
@@ -2105,8 +2105,8 @@ function MapSearchOverlay({
                                 {isClosed
                                   ? "Closed"
                                   : r.waitTime < 0
-                                  ? "-- min"
-                                  : `${r.waitTime} min`}
+                                    ? "-- min"
+                                    : `${r.waitTime} min`}
                               </Text>
                             </View>
                           </>

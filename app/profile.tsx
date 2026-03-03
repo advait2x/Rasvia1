@@ -43,6 +43,7 @@ import {
   Bug,
   RefreshCw,
   AlertTriangle,
+  FileText,
 } from "lucide-react-native";
 import Animated, {
   FadeIn,
@@ -232,12 +233,12 @@ export default function ProfileSettingsScreen() {
           setOrigSavedAddress(sAddr);
 
           if (data.home_lat && data.home_long) {
-              const coords = { lat: data.home_lat, lon: data.home_long };
-              setSelectedCoords(coords);
-              setOrigSelectedCoords(coords);
+            const coords = { lat: data.home_lat, lon: data.home_long };
+            setSelectedCoords(coords);
+            setOrigSelectedCoords(coords);
           }
         }
-      } catch {}
+      } catch { }
       setLoadingPrefs(false);
     }
     loadPrefs();
@@ -261,31 +262,31 @@ export default function ProfileSettingsScreen() {
   // Autocomplete fetch
   useEffect(() => {
     const timer = setTimeout(async () => {
-        if (savedAddress && savedAddress.trim().length > 4 && savedAddress !== origSavedAddress) {
-            setIsSearchingAddress(true);
-            try {
-                // Ensure the search is loosely bounded to Texas to give better hits before filtering
-                const query = savedAddress.toLowerCase().includes("tx") || savedAddress.toLowerCase().includes("texas") 
-                    ? savedAddress 
-                    : `${savedAddress}, Texas`;
+      if (savedAddress && savedAddress.trim().length > 4 && savedAddress !== origSavedAddress) {
+        setIsSearchingAddress(true);
+        try {
+          // Ensure the search is loosely bounded to Texas to give better hits before filtering
+          const query = savedAddress.toLowerCase().includes("tx") || savedAddress.toLowerCase().includes("texas")
+            ? savedAddress
+            : `${savedAddress}, Texas`;
 
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=10`, {
-                    headers: { "User-Agent": "RasviaApp/1.0" }
-                });
-                const data = await res.json();
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=10`, {
+            headers: { "User-Agent": "RasviaApp/1.0" }
+          });
+          const data = await res.json();
 
-                // Filter results to only include Texas
-                const filtered = (data || []).filter((item: any) => {
-                    return item.address?.state === "Texas";
-                });
+          // Filter results to only include Texas
+          const filtered = (data || []).filter((item: any) => {
+            return item.address?.state === "Texas";
+          });
 
-                // Take top 5
-                setAddressSuggestions(filtered.slice(0, 5));
-            } catch(e) {}
-            setIsSearchingAddress(false);
-        } else {
-            setAddressSuggestions([]);
-        }
+          // Take top 5
+          setAddressSuggestions(filtered.slice(0, 5));
+        } catch (e) { }
+        setIsSearchingAddress(false);
+      } else {
+        setAddressSuggestions([]);
+      }
     }, 600);
     return () => clearTimeout(timer);
   }, [savedAddress, origSavedAddress]);
@@ -415,6 +416,69 @@ export default function ProfileSettingsScreen() {
     ]);
   }
 
+  const [deletingAccount, setDeletingAccount] = React.useState(false);
+
+  async function handleDeleteAccount() {
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+    // First confirmation
+    Alert.alert(
+      "Delete Account",
+      "This will permanently delete your account and all associated data. This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () => {
+            // Second confirmation — extra safety
+            Alert.alert(
+              "Are you absolutely sure?",
+              `Your account (${userEmail}) and all order history will be permanently deleted.`,
+              [
+                { text: "Go Back", style: "cancel" },
+                {
+                  text: "Delete Forever",
+                  style: "destructive",
+                  onPress: async () => {
+                    setDeletingAccount(true);
+                    try {
+                      const { data: { session } } = await supabase.auth.getSession();
+                      if (!session?.access_token) throw new Error("Not authenticated");
+
+                      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+                      const response = await fetch(
+                        `${supabaseUrl}/functions/v1/delete-account`,
+                        {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${session.access_token}`,
+                          },
+                        }
+                      );
+
+                      const result = await response.json();
+                      if (!response.ok) throw new Error(result.error || "Deletion failed");
+
+                      // Sign out and redirect
+                      await supabase.auth.signOut();
+                      router.replace("/auth");
+                    } catch (err: any) {
+                      Alert.alert("Error", err.message || "Could not delete account. Please contact support@rasvia.com.");
+                    } finally {
+                      setDeletingAccount(false);
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  }
+
   const logoutScale = useSharedValue(1);
   const logoutStyle = useAnimatedStyle(() => ({
     transform: [{ scale: logoutScale.value }],
@@ -436,12 +500,12 @@ export default function ProfileSettingsScreen() {
 
       if (addressToSave) {
         if (selectedCoords && selectedCoords.lat && selectedCoords.lon) {
-           lat = parseFloat(selectedCoords.lat.toString());
-           lng = parseFloat(selectedCoords.lon.toString());
+          lat = parseFloat(selectedCoords.lat.toString());
+          lng = parseFloat(selectedCoords.lon.toString());
         } else {
-            Alert.alert("Address Required", "Please select a specific address from the suggestions dropdown to ensure map accuracy.");
-            setIsSavingLocation(false);
-            return;
+          Alert.alert("Address Required", "Please select a specific address from the suggestions dropdown to ensure map accuracy.");
+          setIsSavingLocation(false);
+          return;
         }
       }
 
@@ -513,9 +577,9 @@ export default function ProfileSettingsScreen() {
     base.setDate(base.getDate() + dayDiff);
 
     // Get the CST calendar date (year/month/day) for the chosen weekday
-    const year  = base.toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric' });
+    const year = base.toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric' });
     const month = base.toLocaleString('en-US', { timeZone: 'America/Chicago', month: '2-digit' });
-    const day   = base.toLocaleString('en-US', { timeZone: 'America/Chicago', day: '2-digit' });
+    const day = base.toLocaleString('en-US', { timeZone: 'America/Chicago', day: '2-digit' });
 
     // Convert 12h → 24h for UTC calculation
     let hour24 = debugHour % 12; // 12 AM → 0, 12 PM → 12
@@ -528,11 +592,11 @@ export default function ProfileSettingsScreen() {
     // If utcHour overflows into the next day, advance the date by 1
     const dateObj = new Date(`${year}-${month}-${day}T00:00:00Z`);
     dateObj.setUTCDate(dateObj.getUTCDate() + dayOverflow);
-    const finalYear  = dateObj.getUTCFullYear();
+    const finalYear = dateObj.getUTCFullYear();
     const finalMonth = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
-    const finalDay   = String(dateObj.getUTCDate()).padStart(2, '0');
+    const finalDay = String(dateObj.getUTCDate()).padStart(2, '0');
 
-    const iso = `${finalYear}-${finalMonth}-${finalDay}T${String(finalUTCHour).padStart(2,'0')}:${String(debugMinute).padStart(2,'0')}:00.000Z`;
+    const iso = `${finalYear}-${finalMonth}-${finalDay}T${String(finalUTCHour).padStart(2, '0')}:${String(debugMinute).padStart(2, '0')}:00.000Z`;
 
     setDebugTime(iso);
     setActiveDebugTime(iso);
@@ -793,47 +857,672 @@ export default function ProfileSettingsScreen() {
                         DINING PREFERENCES SECTION
                     ========================================== */}
           {(!isAdmin || activeTab === 'preferences') && (
-          <Animated.View
-            entering={FadeInDown.delay(150).duration(500)}
-            className="mx-5 mb-8"
-          >
-            {/* Section Header */}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginBottom: 14,
-              }}
+            <Animated.View
+              entering={FadeInDown.delay(150).duration(500)}
+              className="mx-5 mb-8"
             >
-              <Utensils size={18} color="#FF9933" />
-              <Text
+              {/* Section Header */}
+              <View
                 style={{
-                  fontFamily: "BricolageGrotesque_700Bold",
-                  color: "#f5f5f5",
-                  fontSize: 18,
-                  marginLeft: 8,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginBottom: 14,
                 }}
               >
-                Dining Preferences
-              </Text>
-            </View>
+                <Utensils size={18} color="#FF9933" />
+                <Text
+                  style={{
+                    fontFamily: "BricolageGrotesque_700Bold",
+                    color: "#f5f5f5",
+                    fontSize: 18,
+                    marginLeft: 8,
+                  }}
+                >
+                  Dining Preferences
+                </Text>
+              </View>
 
-            <View
+              <View
+                style={{
+                  backgroundColor: "#1a1a1a",
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: "#2a2a2a",
+                  padding: 20,
+                }}
+              >
+                {loadingPrefs ? (
+                  <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                    <ActivityIndicator color="#FF9933" />
+                  </View>
+                ) : (
+                  <>
+                    {/* === Location === */}
+                    <Text
+                      style={{
+                        fontFamily: "Manrope_600SemiBold",
+                        color: "#999",
+                        fontSize: 12,
+                        letterSpacing: 1,
+                        textTransform: "uppercase",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Location
+                    </Text>
+                    <Pressable
+                      onPress={() => setShowCityPicker((p) => !p)}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        backgroundColor: "#262626",
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: "#333",
+                        paddingHorizontal: 14,
+                        height: 48,
+                        marginBottom: showCityPicker ? 8 : 20,
+                      }}
+                    >
+                      <View
+                        style={{ flexDirection: "row", alignItems: "center" }}
+                      >
+                        <MapPin size={16} color="#FF9933" />
+                        <Text
+                          style={{
+                            fontFamily: "Manrope_600SemiBold",
+                            color: "#f5f5f5",
+                            fontSize: 15,
+                            marginLeft: 8,
+                          }}
+                        >
+                          {city}
+                        </Text>
+                      </View>
+                      <ChevronDown
+                        size={18}
+                        color="#999"
+                        style={{
+                          transform: [
+                            { rotate: showCityPicker ? "180deg" : "0deg" },
+                          ],
+                        }}
+                      />
+                    </Pressable>
+
+                    {showCityPicker && (
+                      <View
+                        style={{
+                          backgroundColor: "#222",
+                          borderRadius: 14,
+                          borderWidth: 1,
+                          borderColor: "#2a2a2a",
+                          maxHeight: 180,
+                          marginBottom: 20,
+                          overflow: "hidden",
+                        }}
+                      >
+                        <ScrollView
+                          showsVerticalScrollIndicator={false}
+                          nestedScrollEnabled
+                        >
+                          {DFW_CITIES.map((c) => (
+                            <Pressable
+                              key={c}
+                              onPress={() => {
+                                setCity(c);
+                                setShowCityPicker(false);
+                                if (Platform.OS !== "web")
+                                  Haptics.selectionAsync();
+                              }}
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                paddingHorizontal: 14,
+                                paddingVertical: 12,
+                                borderBottomWidth: 1,
+                                borderBottomColor: "#2a2a2a",
+                                backgroundColor:
+                                  city === c
+                                    ? "rgba(255,153,51,0.08)"
+                                    : "transparent",
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontFamily: "Manrope_500Medium",
+                                  color: city === c ? "#FF9933" : "#f5f5f5",
+                                  fontSize: 14,
+                                }}
+                              >
+                                {c}
+                              </Text>
+                              {city === c && <Check size={16} color="#FF9933" />}
+                            </Pressable>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
+
+                    {/* === Dietary Type === */}
+                    <Text
+                      style={{
+                        fontFamily: "Manrope_600SemiBold",
+                        color: "#999",
+                        fontSize: 12,
+                        letterSpacing: 1,
+                        textTransform: "uppercase",
+                        marginBottom: 10,
+                      }}
+                    >
+                      Dietary Preference
+                    </Text>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        gap: 10,
+                        marginBottom: 20,
+                      }}
+                    >
+                      {DIETARY_OPTIONS.map((option) => {
+                        const isSelected = dietaryType === option.key;
+                        const Icon = option.icon;
+                        return (
+                          <Pressable
+                            key={option.key}
+                            onPress={() => {
+                              setDietaryType(option.key);
+                              if (Platform.OS !== "web") Haptics.selectionAsync();
+                            }}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              backgroundColor: isSelected
+                                ? "rgba(255,153,51,0.12)"
+                                : "#262626",
+                              borderWidth: isSelected ? 1.5 : 1,
+                              borderColor: isSelected ? "#FF9933" : "#333",
+                              borderRadius: 12,
+                              paddingHorizontal: 14,
+                              paddingVertical: 10,
+                            }}
+                          >
+                            <Icon
+                              size={16}
+                              color={isSelected ? "#FF9933" : option.color}
+                            />
+                            <Text
+                              style={{
+                                fontFamily: "Manrope_600SemiBold",
+                                color: isSelected ? "#FF9933" : "#ccc",
+                                fontSize: 14,
+                                marginLeft: 8,
+                              }}
+                            >
+                              {option.label}
+                            </Text>
+                            {isSelected && (
+                              <View
+                                style={{
+                                  marginLeft: 6,
+                                  width: 18,
+                                  height: 18,
+                                  borderRadius: 9,
+                                  backgroundColor: "#FF9933",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <Check
+                                  size={11}
+                                  color="#0f0f0f"
+                                  strokeWidth={3}
+                                />
+                              </View>
+                            )}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+
+                    {/* === Veg-Only Days (Non-Veg only) === */}
+                    {dietaryType === "Non-Veg" && (
+                      <>
+                        <Text
+                          style={{
+                            fontFamily: "Manrope_600SemiBold",
+                            color: "#999",
+                            fontSize: 12,
+                            letterSpacing: 1,
+                            textTransform: "uppercase",
+                            marginBottom: 10,
+                          }}
+                        >
+                          Veg-Only Days
+                        </Text>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            justifyContent: "space-between",
+                            marginBottom: 10,
+                          }}
+                        >
+                          {DAYS.map((day, index) => {
+                            const isActive = restrictedDays.includes(day.full);
+                            return (
+                              <Pressable
+                                key={day.full + index}
+                                onPress={() => {
+                                  setRestrictedDays((prev) =>
+                                    prev.includes(day.full)
+                                      ? prev.filter((d) => d !== day.full)
+                                      : [...prev, day.full],
+                                  );
+                                  if (Platform.OS !== "web")
+                                    Haptics.selectionAsync();
+                                }}
+                                style={{
+                                  alignItems: "center",
+                                }}
+                              >
+                                <View
+                                  style={{
+                                    width: 38,
+                                    height: 38,
+                                    borderRadius: 19,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    backgroundColor: isActive
+                                      ? "#10B981"
+                                      : "#262626",
+                                    borderWidth: isActive ? 0 : 1,
+                                    borderColor: "#333",
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      fontFamily: "BricolageGrotesque_700Bold",
+                                      color: isActive ? "#fff" : "#999",
+                                      fontSize: 13,
+                                    }}
+                                  >
+                                    {day.short}
+                                  </Text>
+                                </View>
+                                <Text
+                                  style={{
+                                    fontFamily: "Manrope_500Medium",
+                                    color: isActive ? "#10B981" : "#555",
+                                    fontSize: 9,
+                                    marginTop: 4,
+                                  }}
+                                >
+                                  {day.full}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        <Text
+                          style={{
+                            fontFamily: "Manrope_500Medium",
+                            color: "#666",
+                            fontSize: 12,
+                            marginBottom: 10,
+                          }}
+                        >
+                          {restrictedDays.length === 0
+                            ? "No restrictions — you'll see all dishes every day."
+                            : `Vegetarian only on ${restrictedDays.join(", ")}.`}
+                        </Text>
+                      </>
+                    )}
+
+                    {/* === Save Button === */}
+                    {prefsChanged && (
+                      <Animated.View style={saveStyle}>
+                        <Pressable
+                          onPress={savePreferences}
+                          onPressIn={() => {
+                            saveScale.value = withSpring(0.96);
+                          }}
+                          onPressOut={() => {
+                            saveScale.value = withSpring(1);
+                          }}
+                          disabled={savingPrefs}
+                          style={{
+                            backgroundColor: "#FF9933",
+                            borderRadius: 14,
+                            height: 48,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexDirection: "row",
+                            marginTop: 8,
+                            shadowColor: "#FF9933",
+                            shadowOffset: { width: 0, height: 4 },
+                            shadowOpacity: 0.3,
+                            shadowRadius: 12,
+                            elevation: 8,
+                            opacity: savingPrefs ? 0.7 : 1,
+                          }}
+                        >
+                          {savingPrefs ? (
+                            <ActivityIndicator color="#0f0f0f" />
+                          ) : (
+                            <>
+                              <Sparkles size={16} color="#0f0f0f" />
+                              <Text
+                                style={{
+                                  fontFamily: "BricolageGrotesque_700Bold",
+                                  color: "#0f0f0f",
+                                  fontSize: 15,
+                                  marginLeft: 6,
+                                }}
+                              >
+                                Save Preferences
+                              </Text>
+                            </>
+                          )}
+                        </Pressable>
+                      </Animated.View>
+                    )}
+                  </>
+                )}
+              </View>
+            </Animated.View>
+          )}
+
+          {/* Settings List — always shown */}
+          {(!isAdmin || activeTab === 'preferences') && (
+            <Animated.View
+              entering={FadeInDown.delay(200).duration(500)}
+              className="mx-5 mb-8"
               style={{
                 backgroundColor: "#1a1a1a",
                 borderRadius: 20,
                 borderWidth: 1,
                 borderColor: "#2a2a2a",
-                padding: 20,
+                overflow: "hidden",
               }}
             >
-              {loadingPrefs ? (
-                <View style={{ paddingVertical: 40, alignItems: "center" }}>
-                  <ActivityIndicator color="#FF9933" />
+              <SettingsRow
+                icon={<ShoppingBag size={20} color="#FF9933" />}
+                label="My Orders"
+                hasChevron
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                  router.push("/my-orders" as any);
+                }}
+              />
+              <Divider />
+              <SettingsRow
+                icon={<CreditCard size={20} color="#FF9933" />}
+                label="Payment Methods"
+                hasChevron
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                }}
+              />
+              <Divider />
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 20,
+                  paddingVertical: 16,
+                }}
+              >
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    backgroundColor: "rgba(255, 153, 51, 0.12)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: 14,
+                  }}
+                >
+                  <Bell size={20} color="#FF9933" />
                 </View>
-              ) : (
-                <>
-                  {/* === Location === */}
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_600SemiBold",
+                      color: "#f5f5f5",
+                      fontSize: 15,
+                    }}
+                  >
+                    Notifications
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_500Medium",
+                      color: notificationsEnabled ? "#22C55E" : "#EF4444",
+                      fontSize: 11,
+                      marginTop: 2,
+                    }}
+                  >
+                    {notificationsEnabled ? "Active" : "Inactive"}
+                  </Text>
+                </View>
+                <Switch
+                  value={notificationsEnabled}
+                  onValueChange={async (val) => {
+                    if (Platform.OS !== "web") Haptics.selectionAsync();
+                    if (val) {
+                      const granted = await enablePushNotifications();
+                      setNotificationsEnabled(granted);
+                      if (!granted) {
+                        Alert.alert(
+                          "Notifications Blocked",
+                          "Please enable notifications in your device Settings.",
+                        );
+                      }
+                    } else {
+                      await disablePushNotifications();
+                      setNotificationsEnabled(false);
+                    }
+                  }}
+                  trackColor={{ false: "#333333", true: "rgba(255,153,51,0.4)" }}
+                  thumbColor={notificationsEnabled ? "#FF9933" : "#666666"}
+                />
+              </View>
+              <Divider />
+              <SettingsRow
+                icon={<Heart size={20} color="#EF4444" />}
+                label="Favorites"
+                hasChevron
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                  router.push("/favorites" as any);
+                }}
+              />
+              <Divider />
+              <SettingsRow
+                icon={<Shield size={20} color="#888888" />}
+                label="Privacy Policy"
+                hasChevron
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                  router.push("/privacy" as any);
+                }}
+              />
+              <Divider />
+              <SettingsRow
+                icon={<FileText size={20} color="#888888" />}
+                label="Terms of Service"
+                hasChevron
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                  router.push("/terms" as any);
+                }}
+              />
+            </Animated.View>
+          )}
+
+          {/* ==========================================
+                      DANGER ZONE — Delete Account
+              ========================================== */}
+          {(!isAdmin || activeTab === 'preferences') && (
+            <Animated.View
+              entering={FadeInDown.delay(260).duration(500)}
+              className="mx-5 mb-8"
+            >
+              <View
+                style={{
+                  backgroundColor: "rgba(239,68,68,0.05)",
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: "rgba(239,68,68,0.2)",
+                  padding: 20,
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "BricolageGrotesque_700Bold",
+                    color: "#EF4444",
+                    fontSize: 16,
+                    marginBottom: 6,
+                  }}
+                >
+                  Danger Zone
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Manrope_500Medium",
+                    color: "#999",
+                    fontSize: 13,
+                    lineHeight: 19,
+                    marginBottom: 16,
+                  }}
+                >
+                  Permanently deletes your account and all associated data. This cannot be undone.
+                </Text>
+                <Pressable
+                  onPress={handleDeleteAccount}
+                  disabled={deletingAccount}
+                  style={{
+                    backgroundColor: "rgba(239,68,68,0.1)",
+                    borderWidth: 1,
+                    borderColor: "rgba(239,68,68,0.4)",
+                    borderRadius: 14,
+                    height: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexDirection: "row",
+                    gap: 8,
+                    opacity: deletingAccount ? 0.5 : 1,
+                  }}
+                >
+                  {deletingAccount ? (
+                    <ActivityIndicator color="#EF4444" size="small" />
+                  ) : (
+                    <LogOut size={16} color="#EF4444" />
+                  )}
+                  <Text
+                    style={{
+                      fontFamily: "BricolageGrotesque_700Bold",
+                      color: "#EF4444",
+                      fontSize: 15,
+                    }}
+                  >
+                    {deletingAccount ? "Deleting…" : "Delete My Account"}
+                  </Text>
+                </Pressable>
+              </View>
+            </Animated.View>
+          )}
+
+          {/* ==========================================
+                        LOCATION SETTINGS SECTION
+                    ========================================== */}
+          {(!isAdmin || activeTab === 'location') && (
+            <Animated.View
+              entering={FadeInDown.delay(220).duration(500)}
+              className="mx-5 mb-8"
+            >
+              {/* Section Header */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginBottom: 14,
+                }}
+              >
+                <MapPin size={18} color="#FF9933" />
+                <Text
+                  style={{
+                    fontFamily: "BricolageGrotesque_700Bold",
+                    color: "#f5f5f5",
+                    fontSize: 18,
+                    marginLeft: 8,
+                  }}
+                >
+                  Location Settings
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: "#1a1a1a",
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: "#2a2a2a",
+                  padding: 20,
+                }}
+              >
+                {/* === Live Location Toggle === */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 16,
+                  }}
+                >
+                  <View style={{ flex: 1, marginRight: 16 }}>
+                    <Text
+                      style={{
+                        fontFamily: "Manrope_600SemiBold",
+                        color: "#f5f5f5",
+                        fontSize: 15,
+                        marginBottom: 4,
+                      }}
+                    >
+                      Live Location Tracking
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: "Manrope_500Medium",
+                        color: "#999",
+                        fontSize: 12,
+                      }}
+                    >
+                      Automatically find nearby restaurants using device GPS
+                    </Text>
+                  </View>
+                  <Switch
+                    value={liveLocationEnabled}
+                    onValueChange={(val) => {
+                      setLiveLocationEnabled(val);
+                      if (Platform.OS !== "web") Haptics.selectionAsync();
+                    }}
+                    trackColor={{
+                      false: "#333333",
+                      true: "rgba(255,153,51,0.4)",
+                    }}
+                    thumbColor={liveLocationEnabled ? "#FF9933" : "#666666"}
+                  />
+                </View>
+
+                <Divider />
+
+                {/* === Saved Address Input === */}
+                <View style={{ marginTop: 16 }}>
                   <Text
                     style={{
                       fontFamily: "Manrope_600SemiBold",
@@ -844,649 +1533,117 @@ export default function ProfileSettingsScreen() {
                       marginBottom: 8,
                     }}
                   >
-                    Location
+                    Saved Address (Overrides GPS)
                   </Text>
-                  <Pressable
-                    onPress={() => setShowCityPicker((p) => !p)}
+                  <TextInput
+                    value={savedAddress}
+                    onChangeText={(val) => {
+                      setSavedAddress(val);
+                      setSelectedCoords(null);
+                    }}
                     style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
                       backgroundColor: "#262626",
-                      borderRadius: 14,
+                      borderRadius: 12,
                       borderWidth: 1,
                       borderColor: "#333",
                       paddingHorizontal: 14,
                       height: 48,
-                      marginBottom: showCityPicker ? 8 : 20,
+                      color: "#f5f5f5",
+                      fontFamily: "Manrope_500Medium",
+                      fontSize: 15,
                     }}
-                  >
-                    <View
-                      style={{ flexDirection: "row", alignItems: "center" }}
-                    >
-                      <MapPin size={16} color="#FF9933" />
-                      <Text
-                        style={{
-                          fontFamily: "Manrope_600SemiBold",
-                          color: "#f5f5f5",
-                          fontSize: 15,
-                          marginLeft: 8,
-                        }}
-                      >
-                        {city}
-                      </Text>
-                    </View>
-                    <ChevronDown
-                      size={18}
-                      color="#999"
-                      style={{
-                        transform: [
-                          { rotate: showCityPicker ? "180deg" : "0deg" },
-                        ],
-                      }}
-                    />
-                  </Pressable>
+                    placeholder="Enter full address, e.g. 123 Main St..."
+                    placeholderTextColor="#666"
+                    autoCorrect={false}
+                  />
 
-                  {showCityPicker && (
-                    <View
-                      style={{
-                        backgroundColor: "#222",
-                        borderRadius: 14,
-                        borderWidth: 1,
-                        borderColor: "#2a2a2a",
-                        maxHeight: 180,
-                        marginBottom: 20,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <ScrollView
-                        showsVerticalScrollIndicator={false}
-                        nestedScrollEnabled
-                      >
-                        {DFW_CITIES.map((c) => (
-                          <Pressable
-                            key={c}
-                            onPress={() => {
-                              setCity(c);
-                              setShowCityPicker(false);
-                              if (Platform.OS !== "web")
-                                Haptics.selectionAsync();
-                            }}
-                            style={{
-                              flexDirection: "row",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              paddingHorizontal: 14,
-                              paddingVertical: 12,
-                              borderBottomWidth: 1,
-                              borderBottomColor: "#2a2a2a",
-                              backgroundColor:
-                                city === c
-                                  ? "rgba(255,153,51,0.08)"
-                                  : "transparent",
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontFamily: "Manrope_500Medium",
-                                color: city === c ? "#FF9933" : "#f5f5f5",
-                                fontSize: 14,
-                              }}
-                            >
-                              {c}
-                            </Text>
-                            {city === c && <Check size={16} color="#FF9933" />}
-                          </Pressable>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  )}
-
-                  {/* === Dietary Type === */}
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_600SemiBold",
-                      color: "#999",
-                      fontSize: 12,
-                      letterSpacing: 1,
-                      textTransform: "uppercase",
-                      marginBottom: 10,
-                    }}
-                  >
-                    Dietary Preference
-                  </Text>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      flexWrap: "wrap",
-                      gap: 10,
-                      marginBottom: 20,
-                    }}
-                  >
-                    {DIETARY_OPTIONS.map((option) => {
-                      const isSelected = dietaryType === option.key;
-                      const Icon = option.icon;
-                      return (
+                  {/* Autocomplete Suggestions */}
+                  {addressSuggestions.length > 0 && (
+                    <View style={{
+                      backgroundColor: "#2a2a2a",
+                      borderRadius: 12,
+                      marginTop: 8,
+                      borderWidth: 1,
+                      borderColor: "#333",
+                      overflow: 'hidden'
+                    }}>
+                      {addressSuggestions.map((item, idx) => (
                         <Pressable
-                          key={option.key}
+                          key={idx}
+                          style={{
+                            padding: 12,
+                            borderBottomWidth: idx < addressSuggestions.length - 1 ? 1 : 0,
+                            borderColor: "#3a3a3a"
+                          }}
                           onPress={() => {
-                            setDietaryType(option.key);
+                            setSavedAddress(item.display_name);
+                            setSelectedCoords({ lat: item.lat, lon: item.lon });
+                            setAddressSuggestions([]);
                             if (Platform.OS !== "web") Haptics.selectionAsync();
                           }}
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            backgroundColor: isSelected
-                              ? "rgba(255,153,51,0.12)"
-                              : "#262626",
-                            borderWidth: isSelected ? 1.5 : 1,
-                            borderColor: isSelected ? "#FF9933" : "#333",
-                            borderRadius: 12,
-                            paddingHorizontal: 14,
-                            paddingVertical: 10,
-                          }}
                         >
-                          <Icon
-                            size={16}
-                            color={isSelected ? "#FF9933" : option.color}
-                          />
+                          <Text style={{ color: "#f5f5f5", fontFamily: "Manrope_500Medium", fontSize: 13, lineHeight: 18 }}>
+                            {item.display_name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                  {isSearchingAddress && (
+                    <Text style={{ color: "#666", fontSize: 11, fontFamily: "Manrope_500Medium", marginTop: 6, marginLeft: 4 }}>Searching...</Text>
+                  )}
+                </View>
+
+                {/* === Save Location Button === */}
+                {locationPrefsChanged && (
+                  <Animated.View style={saveLocStyle}>
+                    <Pressable
+                      onPress={handleSaveLocationSettings}
+                      onPressIn={() => {
+                        saveLocScale.value = withSpring(0.96);
+                      }}
+                      onPressOut={() => {
+                        saveLocScale.value = withSpring(1);
+                      }}
+                      disabled={isSavingLocation}
+                      style={{
+                        backgroundColor: "#FF9933",
+                        borderRadius: 14,
+                        height: 48,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexDirection: "row",
+                        marginTop: 16,
+                        shadowColor: "#FF9933",
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 12,
+                        elevation: 8,
+                        opacity: isSavingLocation ? 0.7 : 1,
+                      }}
+                    >
+                      {isSavingLocation ? (
+                        <ActivityIndicator color="#0f0f0f" />
+                      ) : (
+                        <>
+                          <MapPin size={16} color="#0f0f0f" />
                           <Text
                             style={{
-                              fontFamily: "Manrope_600SemiBold",
-                              color: isSelected ? "#FF9933" : "#ccc",
-                              fontSize: 14,
-                              marginLeft: 8,
+                              fontFamily: "BricolageGrotesque_700Bold",
+                              color: "#0f0f0f",
+                              fontSize: 15,
+                              marginLeft: 6,
                             }}
                           >
-                            {option.label}
+                            Save Location Settings
                           </Text>
-                          {isSelected && (
-                            <View
-                              style={{
-                                marginLeft: 6,
-                                width: 18,
-                                height: 18,
-                                borderRadius: 9,
-                                backgroundColor: "#FF9933",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <Check
-                                size={11}
-                                color="#0f0f0f"
-                                strokeWidth={3}
-                              />
-                            </View>
-                          )}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-
-                  {/* === Veg-Only Days (Non-Veg only) === */}
-                  {dietaryType === "Non-Veg" && (
-                    <>
-                      <Text
-                        style={{
-                          fontFamily: "Manrope_600SemiBold",
-                          color: "#999",
-                          fontSize: 12,
-                          letterSpacing: 1,
-                          textTransform: "uppercase",
-                          marginBottom: 10,
-                        }}
-                      >
-                        Veg-Only Days
-                      </Text>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          marginBottom: 10,
-                        }}
-                      >
-                        {DAYS.map((day, index) => {
-                          const isActive = restrictedDays.includes(day.full);
-                          return (
-                            <Pressable
-                              key={day.full + index}
-                              onPress={() => {
-                                setRestrictedDays((prev) =>
-                                  prev.includes(day.full)
-                                    ? prev.filter((d) => d !== day.full)
-                                    : [...prev, day.full],
-                                );
-                                if (Platform.OS !== "web")
-                                  Haptics.selectionAsync();
-                              }}
-                              style={{
-                                alignItems: "center",
-                              }}
-                            >
-                              <View
-                                style={{
-                                  width: 38,
-                                  height: 38,
-                                  borderRadius: 19,
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  backgroundColor: isActive
-                                    ? "#10B981"
-                                    : "#262626",
-                                  borderWidth: isActive ? 0 : 1,
-                                  borderColor: "#333",
-                                }}
-                              >
-                                <Text
-                                  style={{
-                                    fontFamily: "BricolageGrotesque_700Bold",
-                                    color: isActive ? "#fff" : "#999",
-                                    fontSize: 13,
-                                  }}
-                                >
-                                  {day.short}
-                                </Text>
-                              </View>
-                              <Text
-                                style={{
-                                  fontFamily: "Manrope_500Medium",
-                                  color: isActive ? "#10B981" : "#555",
-                                  fontSize: 9,
-                                  marginTop: 4,
-                                }}
-                              >
-                                {day.full}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                      <Text
-                        style={{
-                          fontFamily: "Manrope_500Medium",
-                          color: "#666",
-                          fontSize: 12,
-                          marginBottom: 10,
-                        }}
-                      >
-                        {restrictedDays.length === 0
-                          ? "No restrictions — you'll see all dishes every day."
-                          : `Vegetarian only on ${restrictedDays.join(", ")}.`}
-                      </Text>
-                    </>
-                  )}
-
-                  {/* === Save Button === */}
-                  {prefsChanged && (
-                    <Animated.View style={saveStyle}>
-                      <Pressable
-                        onPress={savePreferences}
-                        onPressIn={() => {
-                          saveScale.value = withSpring(0.96);
-                        }}
-                        onPressOut={() => {
-                          saveScale.value = withSpring(1);
-                        }}
-                        disabled={savingPrefs}
-                        style={{
-                          backgroundColor: "#FF9933",
-                          borderRadius: 14,
-                          height: 48,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexDirection: "row",
-                          marginTop: 8,
-                          shadowColor: "#FF9933",
-                          shadowOffset: { width: 0, height: 4 },
-                          shadowOpacity: 0.3,
-                          shadowRadius: 12,
-                          elevation: 8,
-                          opacity: savingPrefs ? 0.7 : 1,
-                        }}
-                      >
-                        {savingPrefs ? (
-                          <ActivityIndicator color="#0f0f0f" />
-                        ) : (
-                          <>
-                            <Sparkles size={16} color="#0f0f0f" />
-                            <Text
-                              style={{
-                                fontFamily: "BricolageGrotesque_700Bold",
-                                color: "#0f0f0f",
-                                fontSize: 15,
-                                marginLeft: 6,
-                              }}
-                            >
-                              Save Preferences
-                            </Text>
-                          </>
-                        )}
-                      </Pressable>
-                    </Animated.View>
-                  )}
-                </>
-              )}
-            </View>
-          </Animated.View>
-          )}
-
-          {/* Settings List — always shown */}
-          {(!isAdmin || activeTab === 'preferences') && (
-          <Animated.View
-            entering={FadeInDown.delay(200).duration(500)}
-            className="mx-5 mb-8"
-            style={{
-              backgroundColor: "#1a1a1a",
-              borderRadius: 20,
-              borderWidth: 1,
-              borderColor: "#2a2a2a",
-              overflow: "hidden",
-            }}
-          >
-            <SettingsRow
-              icon={<ShoppingBag size={20} color="#FF9933" />}
-              label="My Orders"
-              hasChevron
-              onPress={() => {
-                if (Platform.OS !== "web") Haptics.selectionAsync();
-                router.push("/my-orders" as any);
-              }}
-            />
-            <Divider />
-            <SettingsRow
-              icon={<CreditCard size={20} color="#FF9933" />}
-              label="Payment Methods"
-              hasChevron
-              onPress={() => {
-                if (Platform.OS !== "web") Haptics.selectionAsync();
-              }}
-            />
-            <Divider />
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                paddingHorizontal: 20,
-                paddingVertical: 16,
-              }}
-            >
-              <View
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  backgroundColor: "rgba(255, 153, 51, 0.12)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginRight: 14,
-                }}
-              >
-                <Bell size={20} color="#FF9933" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    fontFamily: "Manrope_600SemiBold",
-                    color: "#f5f5f5",
-                    fontSize: 15,
-                  }}
-                >
-                  Notifications
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: "Manrope_500Medium",
-                    color: notificationsEnabled ? "#22C55E" : "#EF4444",
-                    fontSize: 11,
-                    marginTop: 2,
-                  }}
-                >
-                  {notificationsEnabled ? "Active" : "Inactive"}
-                </Text>
-              </View>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={async (val) => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                  if (val) {
-                    const granted = await enablePushNotifications();
-                    setNotificationsEnabled(granted);
-                    if (!granted) {
-                      Alert.alert(
-                        "Notifications Blocked",
-                        "Please enable notifications in your device Settings.",
-                      );
-                    }
-                  } else {
-                    await disablePushNotifications();
-                    setNotificationsEnabled(false);
-                  }
-                }}
-                trackColor={{ false: "#333333", true: "rgba(255,153,51,0.4)" }}
-                thumbColor={notificationsEnabled ? "#FF9933" : "#666666"}
-              />
-            </View>
-            <Divider />
-            <SettingsRow
-              icon={<Heart size={20} color="#EF4444" />}
-              label="Favorites"
-              hasChevron
-              onPress={() => {
-                if (Platform.OS !== "web") Haptics.selectionAsync();
-                router.push("/favorites" as any);
-              }}
-            />
-          </Animated.View>
-          )}
-
-          {/* ==========================================
-                        LOCATION SETTINGS SECTION
-                    ========================================== */}
-          {(!isAdmin || activeTab === 'location') && (
-          <Animated.View
-            entering={FadeInDown.delay(220).duration(500)}
-            className="mx-5 mb-8"
-          >
-            {/* Section Header */}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginBottom: 14,
-              }}
-            >
-              <MapPin size={18} color="#FF9933" />
-              <Text
-                style={{
-                  fontFamily: "BricolageGrotesque_700Bold",
-                  color: "#f5f5f5",
-                  fontSize: 18,
-                  marginLeft: 8,
-                }}
-              >
-                Location Settings
-              </Text>
-            </View>
-
-            <View
-              style={{
-                backgroundColor: "#1a1a1a",
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: "#2a2a2a",
-                padding: 20,
-              }}
-            >
-              {/* === Live Location Toggle === */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 16,
-                }}
-              >
-                <View style={{ flex: 1, marginRight: 16 }}>
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_600SemiBold",
-                      color: "#f5f5f5",
-                      fontSize: 15,
-                      marginBottom: 4,
-                    }}
-                  >
-                    Live Location Tracking
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_500Medium",
-                      color: "#999",
-                      fontSize: 12,
-                    }}
-                  >
-                    Automatically find nearby restaurants using device GPS
-                  </Text>
-                </View>
-                <Switch
-                  value={liveLocationEnabled}
-                  onValueChange={(val) => {
-                    setLiveLocationEnabled(val);
-                    if (Platform.OS !== "web") Haptics.selectionAsync();
-                  }}
-                  trackColor={{
-                    false: "#333333",
-                    true: "rgba(255,153,51,0.4)",
-                  }}
-                  thumbColor={liveLocationEnabled ? "#FF9933" : "#666666"}
-                />
-              </View>
-
-              <Divider />
-
-              {/* === Saved Address Input === */}
-              <View style={{ marginTop: 16 }}>
-                <Text
-                  style={{
-                    fontFamily: "Manrope_600SemiBold",
-                    color: "#999",
-                    fontSize: 12,
-                    letterSpacing: 1,
-                    textTransform: "uppercase",
-                    marginBottom: 8,
-                  }}
-                >
-                  Saved Address (Overrides GPS)
-                </Text>
-                <TextInput
-                  value={savedAddress}
-                  onChangeText={(val) => {
-                    setSavedAddress(val);
-                    setSelectedCoords(null);
-                  }}
-                  style={{
-                    backgroundColor: "#262626",
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                    paddingHorizontal: 14,
-                    height: 48,
-                    color: "#f5f5f5",
-                    fontFamily: "Manrope_500Medium",
-                    fontSize: 15,
-                  }}
-                  placeholder="Enter full address, e.g. 123 Main St..."
-                  placeholderTextColor="#666"
-                  autoCorrect={false}
-                />
-                
-                {/* Autocomplete Suggestions */}
-                {addressSuggestions.length > 0 && (
-                  <View style={{ 
-                    backgroundColor: "#2a2a2a", 
-                    borderRadius: 12, 
-                    marginTop: 8, 
-                    borderWidth: 1,
-                    borderColor: "#333",
-                    overflow: 'hidden' 
-                  }}>
-                    {addressSuggestions.map((item, idx) => (
-                      <Pressable
-                        key={idx}
-                        style={{ 
-                          padding: 12, 
-                          borderBottomWidth: idx < addressSuggestions.length - 1 ? 1 : 0, 
-                          borderColor: "#3a3a3a" 
-                        }}
-                        onPress={() => {
-                          setSavedAddress(item.display_name);
-                          setSelectedCoords({ lat: item.lat, lon: item.lon });
-                          setAddressSuggestions([]);
-                          if (Platform.OS !== "web") Haptics.selectionAsync();
-                        }}
-                      >
-                        <Text style={{ color: "#f5f5f5", fontFamily: "Manrope_500Medium", fontSize: 13, lineHeight: 18 }}>
-                          {item.display_name}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
-                {isSearchingAddress && (
-                  <Text style={{color: "#666", fontSize: 11, fontFamily: "Manrope_500Medium", marginTop: 6, marginLeft: 4}}>Searching...</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  </Animated.View>
                 )}
               </View>
-
-              {/* === Save Location Button === */}
-              {locationPrefsChanged && (
-                <Animated.View style={saveLocStyle}>
-                  <Pressable
-                    onPress={handleSaveLocationSettings}
-                    onPressIn={() => {
-                      saveLocScale.value = withSpring(0.96);
-                    }}
-                    onPressOut={() => {
-                      saveLocScale.value = withSpring(1);
-                    }}
-                    disabled={isSavingLocation}
-                    style={{
-                      backgroundColor: "#FF9933",
-                      borderRadius: 14,
-                      height: 48,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexDirection: "row",
-                      marginTop: 16,
-                      shadowColor: "#FF9933",
-                      shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: 0.3,
-                      shadowRadius: 12,
-                      elevation: 8,
-                      opacity: isSavingLocation ? 0.7 : 1,
-                    }}
-                  >
-                    {isSavingLocation ? (
-                      <ActivityIndicator color="#0f0f0f" />
-                    ) : (
-                      <>
-                        <MapPin size={16} color="#0f0f0f" />
-                        <Text
-                          style={{
-                            fontFamily: "BricolageGrotesque_700Bold",
-                            color: "#0f0f0f",
-                            fontSize: 15,
-                            marginLeft: 6,
-                          }}
-                        >
-                          Save Location Settings
-                        </Text>
-                      </>
-                    )}
-                  </Pressable>
-                </Animated.View>
-              )}
-            </View>
-          </Animated.View>
+            </Animated.View>
           )}
 
           {/* ==========================================
@@ -1674,7 +1831,7 @@ export default function ProfileSettingsScreen() {
                         fontFamily: 'JetBrainsMono_600SemiBold',
                         fontSize: 12,
                         color: debugMinute === m ? '#F59E0B' : '#888',
-                      }}>:{String(m).padStart(2,'0')}</Text>
+                      }}>:{String(m).padStart(2, '0')}</Text>
                     </Pressable>
                   ))}
                 </ScrollView>
@@ -1781,167 +1938,167 @@ export default function ProfileSettingsScreen() {
                 paddingHorizontal: 24,
               }}>
                 <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-            <View
-              style={{
-                backgroundColor: "#1a1a1a",
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: "#2a2a2a",
-                padding: 24,
-                width: "100%",
-                maxWidth: 420,
-              }}
-            >
-              {/* Header */}
-              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 20 }}>
-                <View style={{
-                  width: 36, height: 36, borderRadius: 18,
-                  backgroundColor: "rgba(255,153,51,0.15)",
-                  alignItems: "center", justifyContent: "center",
-                  marginRight: 12,
-                }}>
-                  <Edit2 size={16} color="#FF9933" />
-                </View>
-                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 20 }}>
-                  Edit Profile
-                </Text>
-              </View>
-
-              {/* Name fields */}
-              <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
-                Display Name
-              </Text>
-              <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11, marginBottom: 6 }}>First Name</Text>
-                  <TextInput
-                    value={tempFirstName}
-                    onChangeText={setTempFirstName}
+                  <View
                     style={{
+                      backgroundColor: "#1a1a1a",
+                      borderRadius: 20,
+                      borderWidth: 1,
+                      borderColor: "#2a2a2a",
+                      padding: 24,
+                      width: "100%",
+                      maxWidth: 420,
+                    }}
+                  >
+                    {/* Header */}
+                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 20 }}>
+                      <View style={{
+                        width: 36, height: 36, borderRadius: 18,
+                        backgroundColor: "rgba(255,153,51,0.15)",
+                        alignItems: "center", justifyContent: "center",
+                        marginRight: 12,
+                      }}>
+                        <Edit2 size={16} color="#FF9933" />
+                      </View>
+                      <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 20 }}>
+                        Edit Profile
+                      </Text>
+                    </View>
+
+                    {/* Name fields */}
+                    <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
+                      Display Name
+                    </Text>
+                    <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11, marginBottom: 6 }}>First Name</Text>
+                        <TextInput
+                          value={tempFirstName}
+                          onChangeText={setTempFirstName}
+                          style={{
+                            backgroundColor: "#262626",
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: tempFirstName ? "#FF9933" : "#333",
+                            paddingHorizontal: 14,
+                            height: 48,
+                            color: "#f5f5f5",
+                            fontFamily: "Manrope_500Medium",
+                            fontSize: 15,
+                          }}
+                          placeholderTextColor="#666"
+                          autoCapitalize="words"
+                        />
+                      </View>
+                      <View style={{ width: 80 }}>
+                        <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11, marginBottom: 6 }}>Last Initial</Text>
+                        <TextInput
+                          value={tempLastInitial}
+                          onChangeText={(text) => setTempLastInitial(text.slice(0, 1))}
+                          maxLength={1}
+                          style={{
+                            backgroundColor: "#262626",
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: tempLastInitial ? "#FF9933" : "#333",
+                            paddingHorizontal: 14,
+                            height: 48,
+                            color: "#f5f5f5",
+                            fontFamily: "Manrope_500Medium",
+                            fontSize: 15,
+                            textAlign: "center",
+                          }}
+                          placeholderTextColor="#666"
+                          autoCapitalize="characters"
+                        />
+                      </View>
+                    </View>
+
+                    {/* Email — read-only */}
+                    <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
+                      Email
+                    </Text>
+                    <View style={{
+                      backgroundColor: "#1e1e1e",
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: "#2a2a2a",
+                      paddingHorizontal: 14,
+                      height: 48,
+                      justifyContent: "center",
+                      marginBottom: 16,
+                    }}>
+                      <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 14 }}>
+                        {userEmail || "—"}
+                      </Text>
+                    </View>
+                    <Text style={{ fontFamily: "Manrope_500Medium", color: "#555", fontSize: 11, marginTop: -10, marginBottom: 16 }}>
+                      Email cannot be changed here
+                    </Text>
+
+                    {/* Phone Number */}
+                    <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
+                      Phone Number
+                    </Text>
+                    <View style={{
+                      flexDirection: "row",
+                      alignItems: "center",
                       backgroundColor: "#262626",
                       borderRadius: 12,
                       borderWidth: 1,
-                      borderColor: tempFirstName ? "#FF9933" : "#333",
+                      borderColor: tempPhone ? "#FF9933" : "#333",
                       paddingHorizontal: 14,
                       height: 48,
-                      color: "#f5f5f5",
-                      fontFamily: "Manrope_500Medium",
-                      fontSize: 15,
-                    }}
-                    placeholderTextColor="#666"
-                    autoCapitalize="words"
-                  />
-                </View>
-                <View style={{ width: 80 }}>
-                  <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11, marginBottom: 6 }}>Last Initial</Text>
-                  <TextInput
-                    value={tempLastInitial}
-                    onChangeText={(text) => setTempLastInitial(text.slice(0, 1))}
-                    maxLength={1}
-                    style={{
-                      backgroundColor: "#262626",
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: tempLastInitial ? "#FF9933" : "#333",
-                      paddingHorizontal: 14,
-                      height: 48,
-                      color: "#f5f5f5",
-                      fontFamily: "Manrope_500Medium",
-                      fontSize: 15,
-                      textAlign: "center",
-                    }}
-                    placeholderTextColor="#666"
-                    autoCapitalize="characters"
-                  />
-                </View>
-              </View>
+                      marginBottom: 24,
+                    }}>
+                      <Phone size={16} color="#999999" />
+                      <TextInput
+                        value={tempPhone}
+                        onChangeText={(v) => setTempPhone(formatPhoneNumber(v))}
+                        style={{
+                          flex: 1,
+                          color: "#f5f5f5",
+                          fontFamily: "Manrope_500Medium",
+                          fontSize: 15,
+                          marginLeft: 10,
+                        }}
+                        placeholderTextColor="#666"
+                        placeholder="(972) 555-1234"
+                        keyboardType="phone-pad"
+                      />
+                    </View>
 
-              {/* Email — read-only */}
-              <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
-                Email
-              </Text>
-              <View style={{
-                backgroundColor: "#1e1e1e",
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: "#2a2a2a",
-                paddingHorizontal: 14,
-                height: 48,
-                justifyContent: "center",
-                marginBottom: 16,
-              }}>
-                <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 14 }}>
-                  {userEmail || "—"}
-                </Text>
-              </View>
-              <Text style={{ fontFamily: "Manrope_500Medium", color: "#555", fontSize: 11, marginTop: -10, marginBottom: 16 }}>
-                Email cannot be changed here
-              </Text>
-
-              {/* Phone Number */}
-              <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
-                Phone Number
-              </Text>
-              <View style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: "#262626",
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: tempPhone ? "#FF9933" : "#333",
-                paddingHorizontal: 14,
-                height: 48,
-                marginBottom: 24,
-              }}>
-                <Phone size={16} color="#999999" />
-                <TextInput
-                  value={tempPhone}
-                  onChangeText={(v) => setTempPhone(formatPhoneNumber(v))}
-                  style={{
-                    flex: 1,
-                    color: "#f5f5f5",
-                    fontFamily: "Manrope_500Medium",
-                    fontSize: 15,
-                    marginLeft: 10,
-                  }}
-                  placeholderTextColor="#666"
-                  placeholder="(972) 555-1234"
-                  keyboardType="phone-pad"
-                />
-              </View>
-
-              {/* Buttons */}
-              <View style={{ flexDirection: "row", gap: 12 }}>
-                <Pressable
-                  onPress={() => setEditingProfile(false)}
-                  style={{
-                    flex: 1,
-                    backgroundColor: "#262626",
-                    borderRadius: 12,
-                    height: 48,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderWidth: 1,
-                    borderColor: "#333",
-                  }}
-                >
-                  <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 15 }}>Cancel</Text>
-                </Pressable>
-                <Pressable
-                  onPress={handleSaveProfile}
-                  style={{
-                    flex: 1,
-                    backgroundColor: "#FF9933",
-                    borderRadius: 12,
-                    height: 48,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#0f0f0f", fontSize: 15 }}>Save</Text>
-                </Pressable>
-              </View>
-            </View>
+                    {/* Buttons */}
+                    <View style={{ flexDirection: "row", gap: 12 }}>
+                      <Pressable
+                        onPress={() => setEditingProfile(false)}
+                        style={{
+                          flex: 1,
+                          backgroundColor: "#262626",
+                          borderRadius: 12,
+                          height: 48,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderWidth: 1,
+                          borderColor: "#333",
+                        }}
+                      >
+                        <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 15 }}>Cancel</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={handleSaveProfile}
+                        style={{
+                          flex: 1,
+                          backgroundColor: "#FF9933",
+                          borderRadius: 12,
+                          height: 48,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#0f0f0f", fontSize: 15 }}>Save</Text>
+                      </Pressable>
+                    </View>
+                  </View>
                 </TouchableWithoutFeedback>
               </View>
             </TouchableWithoutFeedback>
