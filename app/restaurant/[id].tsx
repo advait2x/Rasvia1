@@ -33,6 +33,8 @@ import {
   Tag,
   Truck,
   UtensilsCrossed,
+  Leaf,
+  AlertTriangle,
 } from "lucide-react-native";
 import Animated, {
   useAnimatedStyle,
@@ -122,6 +124,9 @@ export default function RestaurantDetail() {
   // Menu category filter
   type MenuFilter = 'all' | 'breakfast' | 'lunch' | 'dinner' | 'specials' | 'other';
   const [activeMenuFilter, setActiveMenuFilter] = useState<MenuFilter>('all');
+  // User dietary preferences for veg indicator
+  const [userDietaryType, setUserDietaryType] = useState("");
+  const [userRestrictedDays, setUserRestrictedDays] = useState<string[]>([]);
 
 
   // Fetch party leader name + check for existing active entry
@@ -130,10 +135,14 @@ export default function RestaurantDetail() {
 
     supabase
       .from("profiles")
-      .select("full_name")
+      .select("full_name, dietary_type, restricted_days")
       .eq("id", session.user.id)
       .single()
-      .then(({ data }) => { if (data?.full_name) setPartyLeaderName(data.full_name); });
+      .then(({ data }) => {
+        if (data?.full_name) setPartyLeaderName(data.full_name);
+        if (data?.dietary_type) setUserDietaryType(data.dietary_type);
+        if (data?.restricted_days) setUserRestrictedDays(data.restricted_days as string[]);
+      });
 
     if (id) {
       supabase
@@ -987,6 +996,68 @@ export default function RestaurantDetail() {
             </View>
           )}
 
+          {/* Veg / Non-Veg indicator */}
+          {(() => {
+            // Determine if this restaurant is vegetarian
+            const isVegRestaurant = (restaurant?.tags ?? []).some(
+              (t) => t.toLowerCase().includes("vegetarian") || t.toLowerCase().includes("vegan")
+            );
+
+            // Determine today's day name (CST/CDT)
+            const todayName = new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'short' });
+
+            // Show indicator?
+            const isVegUser = userDietaryType === "Vegetarian" || userDietaryType === "Vegan" || userDietaryType === "Jain";
+            const isTodayRestrictedDay = userDietaryType === "Non-Veg" && userRestrictedDays.includes(todayName);
+            const shouldShow = isVegUser || isTodayRestrictedDay;
+
+            if (!shouldShow) return null;
+
+            if (isVegRestaurant) {
+              return (
+                <View style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 5,
+                  marginTop: 8,
+                  backgroundColor: "rgba(20,184,166,0.08)",
+                  borderRadius: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  alignSelf: "flex-start",
+                  borderWidth: 1,
+                  borderColor: "rgba(20,184,166,0.25)",
+                }}>
+                  <Leaf size={12} color="#14B8A6" />
+                  <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#14B8A6", fontSize: 12 }}>
+                    This is a vegetarian restaurant
+                  </Text>
+                </View>
+              );
+            } else {
+              return (
+                <View style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 5,
+                  marginTop: 8,
+                  backgroundColor: "rgba(245,158,11,0.08)",
+                  borderRadius: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  alignSelf: "flex-start",
+                  borderWidth: 1,
+                  borderColor: "rgba(245,158,11,0.25)",
+                }}>
+                  <AlertTriangle size={12} color="#F59E0B" />
+                  <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#F59E0B", fontSize: 12 }}>
+                    This restaurant may contain non-vegetarian items
+                  </Text>
+                </View>
+              );
+            }
+          })()}
+
           {/* Description */}
           <Text
             style={{
@@ -1242,6 +1313,7 @@ export default function RestaurantDetail() {
         waitlistEntryId={existingEntry?.id}
         onUpdateQuantity={handleUpdateQuantity}
         onClose={() => setShowCheckout(false)}
+        initialCustomerName={partyLeaderName}
         onOrderPlaced={(orderId, orderType) => {
           setCartItems([]);
           setShowCheckout(false);

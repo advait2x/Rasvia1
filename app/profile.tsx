@@ -10,6 +10,10 @@ import {
   ActivityIndicator,
   Dimensions,
   TextInput,
+  Modal,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -129,10 +133,9 @@ export default function ProfileSettingsScreen() {
   const [fullName, setFullName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [createdAt, setCreatedAt] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [tempFirstName, setTempFirstName] = useState("");
   const [tempLastInitial, setTempLastInitial] = useState("");
-  const [editingPhone, setEditingPhone] = useState(false);
   const [tempPhone, setTempPhone] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [pushPermissionDenied, setPushPermissionDenied] = useState(false);
@@ -338,30 +341,43 @@ export default function ProfileSettingsScreen() {
     setSavingPrefs(false);
   }, [session, city, dietaryType, restrictedDays, savingPrefs]);
 
-  const handleSaveName = useCallback(async () => {
+  const handleSaveProfile = useCallback(async () => {
     if (!session?.user?.id) return;
     try {
+      const updates: Record<string, any> = {
+        updated_at: new Date().toISOString(),
+      };
+
+      // Name
       const newFullName = `${tempFirstName.trim()} ${tempLastInitial.trim().toUpperCase()}.`;
+      updates.full_name = newFullName;
+
+      // Phone
+      const cleaned = tempPhone.replace(/\D/g, "").trim();
+      if (!cleaned) {
+        Alert.alert("Error", "Phone number cannot be empty.");
+        return;
+      }
+      updates.phone_number = cleaned;
+
       const { error } = await supabase
         .from("profiles")
-        .update({
-          full_name: newFullName,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updates)
         .eq("id", session.user.id);
 
       if (error) throw error;
 
       setFullName(newFullName);
-      setEditingName(false);
+      setPhoneNumber(formatPhoneNumber(cleaned));
+      setEditingProfile(false);
 
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Could not update name.");
+      Alert.alert("Error", err.message || "Could not update profile.");
     }
-  }, [session, tempFirstName, tempLastInitial]);
+  }, [session, tempFirstName, tempLastInitial, tempPhone]);
 
   function formatPhoneNumber(raw: string): string {
     const digits = raw.replace(/\D/g, "").slice(0, 10);
@@ -370,31 +386,6 @@ export default function ProfileSettingsScreen() {
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
 
-  const handleSavePhone = useCallback(async () => {
-    if (!session?.user?.id) return;
-    const cleaned = tempPhone.replace(/\D/g, "").trim();
-    if (!cleaned) {
-      Alert.alert("Error", "Phone number cannot be empty.");
-      return;
-    }
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ phone_number: cleaned, updated_at: new Date().toISOString() })
-        .eq("id", session.user.id);
-
-      if (error) throw error;
-
-              setPhoneNumber(formatPhoneNumber(cleaned));
-              setEditingPhone(false);
-
-      if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-    } catch (err: any) {
-      Alert.alert("Error", err.message || "Could not update phone number.");
-    }
-  }, [session, tempPhone]);
 
   async function handleLogout() {
     if (Platform.OS !== "web") {
@@ -708,7 +699,8 @@ export default function ProfileSettingsScreen() {
                   parts[parts.length - 1]?.replace(".", "") || "";
                 setTempFirstName(first);
                 setTempLastInitial(lastInit);
-                setEditingName(true);
+                setTempPhone(phoneNumber);
+                setEditingProfile(true);
               }}
               style={{
                 position: "absolute",
@@ -763,12 +755,8 @@ export default function ProfileSettingsScreen() {
               {userEmail || ""}
             </Text>
 
-            {/* Phone row with edit button */}
-            <Pressable
-              onPress={() => {
-                setTempPhone(phoneNumber);
-                setEditingPhone(true);
-              }}
+            {/* Phone row — read-only display, tap edit button above to change */}
+            <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -784,10 +772,9 @@ export default function ProfileSettingsScreen() {
                   marginRight: 4,
                 }}
               >
-                {phoneNumber || "Add phone number"}
+                {phoneNumber || "Tap ✏️ to add phone number"}
               </Text>
-              <Edit2 size={10} color="#FF9933" />
-            </Pressable>
+            </View>
 
             <Text
               style={{
@@ -1774,21 +1761,26 @@ export default function ProfileSettingsScreen() {
 
         </ScrollView>
 
-        {/* Phone Edit Modal */}
-        {editingPhone && (
-          <View
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: "rgba(0, 0, 0, 0.7)",
-              alignItems: "center",
-              justifyContent: "center",
-              paddingHorizontal: 24,
-            }}
+        {/* Combined Profile Edit Modal */}
+        <Modal
+          visible={editingProfile}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setEditingProfile(false)}
+        >
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
+            <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); setEditingProfile(false); }}>
+              <View style={{
+                flex: 1,
+                backgroundColor: "rgba(0, 0, 0, 0.75)",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingHorizontal: 24,
+              }}>
+                <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
             <View
               style={{
                 backgroundColor: "#1a1a1a",
@@ -1797,145 +1789,31 @@ export default function ProfileSettingsScreen() {
                 borderColor: "#2a2a2a",
                 padding: 24,
                 width: "100%",
-                maxWidth: 400,
+                maxWidth: 420,
               }}
             >
-              <Text
-                style={{
-                  fontFamily: "BricolageGrotesque_700Bold",
-                  color: "#f5f5f5",
-                  fontSize: 20,
-                  marginBottom: 16,
-                }}
-              >
-                Edit Phone Number
-              </Text>
-              <Text
-                style={{
-                  fontFamily: "Manrope_600SemiBold",
-                  color: "#999",
-                  fontSize: 12,
-                  marginBottom: 8,
-                }}
-              >
-                Phone Number
-              </Text>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  backgroundColor: "#262626",
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: "#333",
-                  paddingHorizontal: 14,
-                  height: 48,
-                  marginBottom: 20,
-                }}
-              >
-                <Phone size={16} color="#999999" />
-                <TextInput
-                  value={tempPhone}
-                  onChangeText={(v) => setTempPhone(formatPhoneNumber(v))}
-                  style={{
-                    flex: 1,
-                    color: "#f5f5f5",
-                    fontFamily: "Manrope_500Medium",
-                    fontSize: 15,
-                    marginLeft: 10,
-                  }}
-                  placeholderTextColor="#666"
-                  placeholder="e.g. 9725551234"
-                  keyboardType="phone-pad"
-                  autoFocus
-                />
+              {/* Header */}
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 20 }}>
+                <View style={{
+                  width: 36, height: 36, borderRadius: 18,
+                  backgroundColor: "rgba(255,153,51,0.15)",
+                  alignItems: "center", justifyContent: "center",
+                  marginRight: 12,
+                }}>
+                  <Edit2 size={16} color="#FF9933" />
+                </View>
+                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 20 }}>
+                  Edit Profile
+                </Text>
               </View>
-              <View style={{ flexDirection: "row", gap: 12 }}>
-                <Pressable
-                  onPress={() => setEditingPhone(false)}
-                  style={{
-                    flex: 1,
-                    backgroundColor: "#262626",
-                    borderRadius: 12,
-                    height: 48,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderWidth: 1,
-                    borderColor: "#333",
-                  }}
-                >
-                  <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 15 }}>
-                    Cancel
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={handleSavePhone}
-                  style={{
-                    flex: 1,
-                    backgroundColor: "#FF9933",
-                    borderRadius: 12,
-                    height: 48,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#0f0f0f", fontSize: 15 }}>
-                    Save
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        )}
 
-        {/* Name Edit Modal */}
-        {editingName && (
-          <View
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: "rgba(0, 0, 0, 0.7)",
-              alignItems: "center",
-              justifyContent: "center",
-              paddingHorizontal: 24,
-            }}
-          >
-            <View
-              style={{
-                backgroundColor: "#1a1a1a",
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: "#2a2a2a",
-                padding: 24,
-                width: "100%",
-                maxWidth: 400,
-              }}
-            >
-              <Text
-                style={{
-                  fontFamily: "BricolageGrotesque_700Bold",
-                  color: "#f5f5f5",
-                  fontSize: 20,
-                  marginBottom: 16,
-                }}
-              >
-                Edit Name
+              {/* Name fields */}
+              <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
+                Display Name
               </Text>
-              <View style={{ flexDirection: "row", gap: 12, marginBottom: 20 }}>
+              <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
                 <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_600SemiBold",
-                      color: "#999",
-                      fontSize: 12,
-                      marginBottom: 8,
-                    }}
-                  >
-                    First Name
-                  </Text>
+                  <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11, marginBottom: 6 }}>First Name</Text>
                   <TextInput
                     value={tempFirstName}
                     onChangeText={setTempFirstName}
@@ -1943,7 +1821,7 @@ export default function ProfileSettingsScreen() {
                       backgroundColor: "#262626",
                       borderRadius: 12,
                       borderWidth: 1,
-                      borderColor: "#333",
+                      borderColor: tempFirstName ? "#FF9933" : "#333",
                       paddingHorizontal: 14,
                       height: 48,
                       color: "#f5f5f5",
@@ -1955,27 +1833,16 @@ export default function ProfileSettingsScreen() {
                   />
                 </View>
                 <View style={{ width: 80 }}>
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_600SemiBold",
-                      color: "#999",
-                      fontSize: 12,
-                      marginBottom: 8,
-                    }}
-                  >
-                    Last Initial
-                  </Text>
+                  <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11, marginBottom: 6 }}>Last Initial</Text>
                   <TextInput
                     value={tempLastInitial}
-                    onChangeText={(text) =>
-                      setTempLastInitial(text.slice(0, 1))
-                    }
+                    onChangeText={(text) => setTempLastInitial(text.slice(0, 1))}
                     maxLength={1}
                     style={{
                       backgroundColor: "#262626",
                       borderRadius: 12,
                       borderWidth: 1,
-                      borderColor: "#333",
+                      borderColor: tempLastInitial ? "#FF9933" : "#333",
                       paddingHorizontal: 14,
                       height: 48,
                       color: "#f5f5f5",
@@ -1988,9 +1855,65 @@ export default function ProfileSettingsScreen() {
                   />
                 </View>
               </View>
+
+              {/* Email — read-only */}
+              <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
+                Email
+              </Text>
+              <View style={{
+                backgroundColor: "#1e1e1e",
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "#2a2a2a",
+                paddingHorizontal: 14,
+                height: 48,
+                justifyContent: "center",
+                marginBottom: 16,
+              }}>
+                <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 14 }}>
+                  {userEmail || "—"}
+                </Text>
+              </View>
+              <Text style={{ fontFamily: "Manrope_500Medium", color: "#555", fontSize: 11, marginTop: -10, marginBottom: 16 }}>
+                Email cannot be changed here
+              </Text>
+
+              {/* Phone Number */}
+              <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
+                Phone Number
+              </Text>
+              <View style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: "#262626",
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: tempPhone ? "#FF9933" : "#333",
+                paddingHorizontal: 14,
+                height: 48,
+                marginBottom: 24,
+              }}>
+                <Phone size={16} color="#999999" />
+                <TextInput
+                  value={tempPhone}
+                  onChangeText={(v) => setTempPhone(formatPhoneNumber(v))}
+                  style={{
+                    flex: 1,
+                    color: "#f5f5f5",
+                    fontFamily: "Manrope_500Medium",
+                    fontSize: 15,
+                    marginLeft: 10,
+                  }}
+                  placeholderTextColor="#666"
+                  placeholder="(972) 555-1234"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              {/* Buttons */}
               <View style={{ flexDirection: "row", gap: 12 }}>
                 <Pressable
-                  onPress={() => setEditingName(false)}
+                  onPress={() => setEditingProfile(false)}
                   style={{
                     flex: 1,
                     backgroundColor: "#262626",
@@ -2002,18 +1925,10 @@ export default function ProfileSettingsScreen() {
                     borderColor: "#333",
                   }}
                 >
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_600SemiBold",
-                      color: "#999",
-                      fontSize: 15,
-                    }}
-                  >
-                    Cancel
-                  </Text>
+                  <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 15 }}>Cancel</Text>
                 </Pressable>
                 <Pressable
-                  onPress={handleSaveName}
+                  onPress={handleSaveProfile}
                   style={{
                     flex: 1,
                     backgroundColor: "#FF9933",
@@ -2023,20 +1938,15 @@ export default function ProfileSettingsScreen() {
                     justifyContent: "center",
                   }}
                 >
-                  <Text
-                    style={{
-                      fontFamily: "BricolageGrotesque_700Bold",
-                      color: "#0f0f0f",
-                      fontSize: 15,
-                    }}
-                  >
-                    Save
-                  </Text>
+                  <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#0f0f0f", fontSize: 15 }}>Save</Text>
                 </Pressable>
               </View>
             </View>
-          </View>
-        )}
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </KeyboardAvoidingView>
+        </Modal>
       </SafeAreaView>
     </View>
   );

@@ -52,6 +52,8 @@ interface CheckoutModalProps {
     /** If customer is already seated */
     isSeated?: boolean;
     existingOrderId?: string;
+    /** Pre-fill customer name (e.g. from profiles table) */
+    initialCustomerName?: string;
 }
 
 const MEAL_PERIODS: { key: MealPeriod; label: string; icon: any; color: string }[] = [
@@ -107,6 +109,7 @@ export function CheckoutModal({
     waitlistEntryId,
     isSeated = false,
     existingOrderId,
+    initialCustomerName,
 }: CheckoutModalProps) {
     const { session } = useAuth();
 
@@ -127,7 +130,7 @@ export function CheckoutModal({
         }
     }, [visible, initialOrderType, waitlistEntryId]);
     const [customerName, setCustomerName] = useState(
-        session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || ""
+        session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || initialCustomerName || ""
     );
     const [mealPeriod, setMealPeriod] = useState<MealPeriod>("dinner");
     const [tableNumber, setTableNumber] = useState("");
@@ -140,14 +143,19 @@ export function CheckoutModal({
 
     const reset = useCallback(() => {
         setOrderType(defaultType);
-        setCustomerName(session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || "");
+        setCustomerName(
+            session?.user?.user_metadata?.full_name ||
+            session?.user?.user_metadata?.name ||
+            initialCustomerName ||
+            ""
+        );
         setMealPeriod("dinner");
         setTableNumber("");
         setNotes("");
         setPlacing(false);
         setDone(false);
         setPlacedOrderId(null);
-    }, [defaultType, session]);
+    }, [defaultType, session, initialCustomerName]);
 
     const handleClose = () => {
         reset();

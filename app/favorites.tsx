@@ -17,10 +17,12 @@ import * as Haptics from "expo-haptics";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { parseFavorites } from "@/lib/restaurant-types";
+import { useClosedRestaurantIds } from "@/hooks/useClosedRestaurantIds";
 
 export default function FavoritesScreen() {
   const router = useRouter();
   const { session } = useAuth();
+  const closedRestaurantIds = useClosedRestaurantIds();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [favorites, setFavorites] = useState<any[]>([]);
@@ -175,10 +177,27 @@ export default function FavoritesScreen() {
               </Animated.View>
             ) : (
               favorites.map((restaurant, index) => {
-                const isClosed = restaurant.waitlist_open === false || restaurant.current_wait_time >= 999 || restaurant.is_enabled === false;
-                const noWait = restaurant.current_wait_time != null && restaurant.current_wait_time < 0;
-                const waitTimeStr = isClosed ? "Currently closed" : (noWait ? "No wait" : `${restaurant.current_wait_time || 0} min wait`);
-                const waitColor = isClosed ? "#EF4444" : (noWait ? "#10B981" : (restaurant.current_wait_time < 15 ? "#10B981" : (restaurant.current_wait_time < 45 ? "#F59E0B" : "#EF4444")));
+                const isClosed =
+                  closedRestaurantIds.has(String(restaurant.id)) ||
+                  restaurant.waitlist_open === false ||
+                  restaurant.current_wait_time >= 999 ||
+                  restaurant.is_enabled === false;
+                const noWait = !isClosed && restaurant.current_wait_time != null && restaurant.current_wait_time < 0;
+                const wt = restaurant.current_wait_time;
+                const waitTimeStr = isClosed
+                  ? "Closed"
+                  : noWait
+                  ? "No wait"
+                  : `${wt || 0} min wait`;
+                const waitColor = isClosed
+                  ? "#888888"
+                  : noWait
+                  ? "#10B981"
+                  : wt < 15
+                  ? "#10B981"
+                  : wt < 45
+                  ? "#F59E0B"
+                  : "#EF4444";
 
                 return (
                 <Animated.View

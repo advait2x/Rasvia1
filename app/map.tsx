@@ -801,6 +801,7 @@ export default function MapScreen() {
       {showMapSearch && (
         <MapSearchOverlay
           restaurants={mappableRestaurants}
+          closedRestaurantIds={closedRestaurantIds}
           onClose={() => setShowMapSearch(false)}
           onSelect={(r) => {
             setShowMapSearch(false);
@@ -1744,10 +1745,12 @@ function ClusterMarker({ restaurants }: { restaurants: UIRestaurant[] }) {
 // ==========================================
 function MapSearchOverlay({
   restaurants,
+  closedRestaurantIds,
   onClose,
   onSelect,
 }: {
   restaurants: UIRestaurant[];
+  closedRestaurantIds: Set<string>;
   onClose: () => void;
   onSelect: (r: UIRestaurant) => void;
 }) {
@@ -1775,14 +1778,19 @@ function MapSearchOverlay({
       );
     }
     
-    if (sortBy === "waitTime") {
-      list.sort((a, b) => a.waitTime - b.waitTime);
-    } else if (sortBy === "distance") {
-      list.sort((a, b) => parseDistance(a.distance || "0") - parseDistance(b.distance || "0"));
-    } else {
-      list.sort((a, b) => a.name.localeCompare(b.name));
-    }
-    
+    // Primary: open first, closed last
+    // Secondary: selected sort option within each group
+    list.sort((a, b) => {
+      const aClosed = closedRestaurantIds.has(a.id) ? 1 : 0;
+      const bClosed = closedRestaurantIds.has(b.id) ? 1 : 0;
+      if (aClosed !== bClosed) return aClosed - bClosed;
+
+      // Secondary sort within the same open/closed group
+      if (sortBy === "waitTime") return a.waitTime - b.waitTime;
+      if (sortBy === "distance") return parseDistance(a.distance || "0") - parseDistance(b.distance || "0");
+      return a.name.localeCompare(b.name);
+    });
+
     return list;
   }, [query, sortBy, restaurants]);
 
@@ -2072,30 +2080,38 @@ function MapSearchOverlay({
                       {r.cuisine}
                     </Text>
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Clock size={11} color="#FF9933" />
-                      <View
-                        style={{
-                          backgroundColor: STATUS_BG[r.waitStatus],
-                          borderRadius: 8,
-                          paddingHorizontal: 6,
-                          paddingVertical: 1,
-                          marginLeft: 4,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontFamily: "JetBrainsMono_600SemiBold",
-                            color: STATUS_COLORS[r.waitStatus],
-                            fontSize: 10,
-                          }}
-                        >
-                          {r.waitStatus === "darkgrey" 
-                            ? "Closed" 
-                            : r.waitTime < 0 
-                            ? "-- min" 
-                            : `${r.waitTime} min`}
-                        </Text>
-                      </View>
+                      {(() => {
+                        const isClosed = closedRestaurantIds.has(r.id);
+                        const displayStatus = isClosed ? "darkgrey" : r.waitStatus;
+                        return (
+                          <>
+                            <Clock size={11} color={isClosed ? "#888888" : "#FF9933"} />
+                            <View
+                              style={{
+                                backgroundColor: STATUS_BG[displayStatus],
+                                borderRadius: 8,
+                                paddingHorizontal: 6,
+                                paddingVertical: 1,
+                                marginLeft: 4,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontFamily: "JetBrainsMono_600SemiBold",
+                                  color: STATUS_COLORS[displayStatus],
+                                  fontSize: 10,
+                                }}
+                              >
+                                {isClosed
+                                  ? "Closed"
+                                  : r.waitTime < 0
+                                  ? "-- min"
+                                  : `${r.waitTime} min`}
+                              </Text>
+                            </View>
+                          </>
+                        );
+                      })()}
                     </View>
                   </View>
                   {/* Distance */}

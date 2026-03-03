@@ -594,9 +594,8 @@ export default function HostPartyScreen() {
                     const wt = waitLabel(r);
                     const isClosed = closedRestaurantIds.has(String(r.id));
                     return (
-                      <Animated.View
+                      <View
                         key={r.id}
-                        entering={FadeInDown.delay(i * 30).duration(250)}
                       >
                         <View style={{ opacity: isClosed ? 0.5 : 1 }}>
                         <Pressable
@@ -720,7 +719,7 @@ export default function HostPartyScreen() {
                           </View>
                         </Pressable>
                         </View>
-                      </Animated.View>
+                      </View>
                     );
                   })}
                   {filteredRestaurants.length === 0 && !loadingRestaurants && (

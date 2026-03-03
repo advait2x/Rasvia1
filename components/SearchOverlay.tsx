@@ -23,6 +23,7 @@ import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant, haversineD
 import { useLocation } from "@/lib/location-context";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { getRestaurantStatus } from "@/lib/restaurant-hours";
+import { useClosedRestaurantIds } from "@/hooks/useClosedRestaurantIds";
 
 // --- Trie-based prefix search for efficient matching ---
 
@@ -91,6 +92,7 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
   const router = useRouter();
   const { userCoords } = useLocation();
   const { isAdmin } = useAdminMode();
+  const closedRestaurantIds = useClosedRestaurantIds();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("none");
@@ -450,7 +452,13 @@ export function SearchOverlay({ onClose }: SearchOverlayProps) {
             {results.map((restaurant, index) => (
               <SearchResultCard
                 key={restaurant.id}
-                restaurant={restaurant}
+                restaurant={{
+                  ...restaurant,
+                  // Apply real-time hour-based closed status
+                  waitStatus: closedRestaurantIds.has(restaurant.id)
+                    ? "darkgrey"
+                    : restaurant.waitStatus,
+                }}
                 index={index}
                 onPress={() => handleResultPress(restaurant.id)}
               />
