@@ -28,6 +28,11 @@ import {
     ShoppingBag,
     DollarSign,
     Bell,
+    Drumstick,
+    Coffee,
+    Sun,
+    Moon,
+    Star,
 } from "lucide-react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
@@ -547,8 +552,8 @@ export default function AdminOrdersScreen() {
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#FF9933" }} />
             </View>
 
-            {/* Tab Bar */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ borderBottomWidth: 1, borderBottomColor: "#1e1e1e" }} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}>
+            {/* Tab Bar — compact inline pills, no ScrollView overhead */}
+            <View style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#1e1e1e", paddingHorizontal: 12, paddingVertical: 6, gap: 6, alignItems: "center" }}>
                 {TABS.map(({ key, label }) => {
                     const active = activeTab === key;
                     const count = key === "active"
@@ -563,59 +568,76 @@ export default function AdminOrdersScreen() {
                             key={key}
                             onPress={() => { setActiveTab(key); if (Platform.OS !== "web") Haptics.selectionAsync(); }}
                             style={{
-                                flexDirection: "row", alignItems: "center", gap: 6,
-                                paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-                                backgroundColor: active ? "rgba(255,153,51,0.15)" : "#0f0f0f",
-                                borderWidth: 1, borderColor: active ? "#FF9933" : "#2a2a2a",
+                                flex: 1,
+                                flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3,
+                                paddingHorizontal: 6, paddingVertical: 4, borderRadius: 12,
+                                backgroundColor: active ? "rgba(129,140,248,0.15)" : "transparent",
+                                borderWidth: 1, borderColor: active ? "#818CF8" : "#2a2a2a",
                             }}
                         >
-                            <Text style={{ fontFamily: active ? "Manrope_700Bold" : "Manrope_500Medium", fontSize: 13, color: active ? "#FF9933" : "#666" }}>{label}</Text>
+                            <Text style={{ fontFamily: active ? "Manrope_700Bold" : "Manrope_500Medium", fontSize: 10, color: active ? "#818CF8" : "#555" }} numberOfLines={1}>{label}</Text>
                             {count > 0 && (
-                                <View style={{ backgroundColor: active ? "#FF9933" : "#2a2a2a", borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 }}>
-                                    <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: active ? "#0f0f0f" : "#888", fontSize: 10 }}>{count}</Text>
+                                <View style={{ backgroundColor: active ? "#818CF8" : "#333", borderRadius: 6, paddingHorizontal: 4, paddingVertical: 0 }}>
+                                    <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: active ? "#fff" : "#888", fontSize: 9 }}>{count}</Text>
                                 </View>
                             )}
                         </Pressable>
                     );
                 })}
-            </ScrollView>
+            </View>
 
-            {/* Filter Bar */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ borderBottomWidth: 1, borderBottomColor: "#1a1a1a" }} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 8, gap: 6, alignItems: "center" }}>
-                {/* Diet */}
-                {(["all", "veg", "non_veg"] as DietFilter[]).map((d) => (
-                    <Pressable key={d} onPress={() => setDietFilter(d)} style={S.chip(dietFilter === d, "#22C55E")}>
-                        <Text style={S.chipText(dietFilter === d, "#22C55E")}>
-                            {d === "all" ? "All Diet" : d === "veg" ? "🌿 Veg" : "🥩 Non-Veg"}
-                        </Text>
-                    </Pressable>
-                ))}
-                <View style={{ width: 1, height: 20, backgroundColor: "#2a2a2a", marginHorizontal: 2 }} />
-                {/* Meal period */}
-                {(["all", "breakfast", "lunch", "dinner", "special"] as MealFilter[]).map((m) => (
-                    <Pressable key={m} onPress={() => setMealFilter(m)} style={S.chip(mealFilter === m)}>
-                        <Text style={S.chipText(mealFilter === m)}>
-                            {m === "all" ? "All Meals" : m === "breakfast" ? "☕ Breakfast" : m === "lunch" ? "☀️ Lunch" : m === "dinner" ? "🌙 Dinner" : "✨ Special"}
-                        </Text>
-                    </Pressable>
-                ))}
-                <View style={{ width: 1, height: 20, backgroundColor: "#2a2a2a", marginHorizontal: 2 }} />
-                {/* Table search */}
-                <TextInput
-                    value={tableFilter}
-                    onChangeText={setTableFilter}
-                    placeholder="Table #"
-                    placeholderTextColor="#555"
-                    keyboardType="default"
-                    style={{
-                        backgroundColor: "#1a1a1a", borderRadius: 20, borderWidth: 1,
-                        borderColor: tableFilter ? "#FF9933" : "#2a2a2a",
-                        paddingHorizontal: 12, paddingVertical: 6,
-                        color: "#f5f5f5", fontFamily: "Manrope_600SemiBold", fontSize: 12,
-                        minWidth: 80,
-                    }}
-                />
-            </ScrollView>
+            {/* Filter Rows — Diet above Meals, stacked vertically */}
+            <View style={{ borderBottomWidth: 1, borderBottomColor: "#1a1a1a", paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6, gap: 6 }}>
+                {/* Row 1: Diet filters + table search */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    {(["all", "veg", "non_veg"] as DietFilter[]).map((d) => {
+                        const dietColor = d === "all" ? "#06B6D4" : d === "veg" ? "#22C55E" : "#F87171";
+                        const isActive = dietFilter === d;
+                        return (
+                            <Pressable key={d} onPress={() => setDietFilter(d)} style={[S.chip(isActive, dietColor), { flexDirection: "row", alignItems: "center", gap: 4, marginRight: 0 }]}>
+                                {d === "veg" && <Leaf size={10} color={isActive ? dietColor : "#555"} />}
+                                {d === "non_veg" && <Drumstick size={10} color={isActive ? dietColor : "#555"} />}
+                                <Text style={S.chipText(isActive, dietColor)}>
+                                    {d === "all" ? "All Diet" : d === "veg" ? "Veg" : "Non-Veg"}
+                                </Text>
+                            </Pressable>
+                        );
+                    })}
+                    <View style={{ width: 1, height: 18, backgroundColor: "#2a2a2a", marginHorizontal: 2 }} />
+                    <TextInput
+                        value={tableFilter}
+                        onChangeText={setTableFilter}
+                        placeholder="Table #"
+                        placeholderTextColor="#555"
+                        keyboardType="default"
+                        style={{
+                            backgroundColor: "#1a1a1a", borderRadius: 16, borderWidth: 1,
+                            borderColor: tableFilter ? "#FF9933" : "#2a2a2a",
+                            paddingHorizontal: 10, paddingVertical: 4,
+                            color: "#f5f5f5", fontFamily: "Manrope_600SemiBold", fontSize: 11,
+                            minWidth: 70, maxWidth: 90,
+                        }}
+                    />
+                </View>
+                {/* Row 2: Meal period filters */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    {(["all", "breakfast", "lunch", "dinner", "special"] as MealFilter[]).map((m) => {
+                        const mealColor = m === "all" ? "#C4956A" : m === "breakfast" ? "#FBAB73" : m === "lunch" ? "#7ADC9E" : m === "dinner" ? "#B3BAFB" : "#F9C56D";
+                        const isActive = mealFilter === m;
+                        return (
+                            <Pressable key={m} onPress={() => setMealFilter(m)} style={[S.chip(isActive, mealColor), { flexDirection: "row", alignItems: "center", gap: 4, marginRight: 0 }]}>
+                                {m === "breakfast" && <Coffee size={10} color={isActive ? mealColor : "#555"} />}
+                                {m === "lunch" && <Sun size={10} color={isActive ? mealColor : "#555"} />}
+                                {m === "dinner" && <Moon size={10} color={isActive ? mealColor : "#555"} />}
+                                {m === "special" && <Star size={10} color={isActive ? mealColor : "#555"} />}
+                                <Text style={S.chipText(isActive, mealColor)}>
+                                    {m === "all" ? "All Meals" : m === "breakfast" ? "Breakfast" : m === "lunch" ? "Lunch" : m === "dinner" ? "Dinner" : "Special"}
+                                </Text>
+                            </Pressable>
+                        );
+                    })}
+                </View>
+            </View>
 
             {/* List */}
             {loading ? (

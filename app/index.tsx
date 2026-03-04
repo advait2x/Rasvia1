@@ -25,7 +25,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HeroCard } from "@/components/HeroCard";
 import { RestaurantListCard } from "@/components/RestaurantListCard";
 import { FilterBar } from "@/components/FilterBar";
-import { FloatingQRButton } from "@/components/FloatingQRButton";
 import { SearchOverlay } from "@/components/SearchOverlay";
 import { type FilterType } from "@/data/mockData";
 import { supabase } from "@/lib/supabase";
@@ -275,38 +274,6 @@ export default function DiscoveryFeed() {
     [router]
   );
 
-  const handleQRPress = useCallback(() => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    if (activeGroupOrder) {
-      Alert.alert(
-        "Active Group Order",
-        `You have an in-progress group order at ${activeGroupOrder.restaurantName}.`,
-        [
-          { text: "Go to Order", onPress: () => router.push(`/join/${activeGroupOrder.sessionId}` as any) },
-          {
-            text: "Cancel & Start New",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await supabase.from("party_items").delete().eq("session_id", activeGroupOrder.sessionId);
-                await supabase.from("party_sessions").update({ status: "cancelled" }).eq("id", activeGroupOrder.sessionId);
-                if (activeOrderKey) await AsyncStorage.removeItem(activeOrderKey);
-                setActiveGroupOrder(null);
-                router.push("/host_party" as any);
-              } catch {
-                Alert.alert("Error", "Could not cancel the existing order.");
-              }
-            },
-          },
-          { text: "Dismiss", style: "cancel" },
-        ]
-      );
-    } else {
-      router.push("/host_party" as any);
-    }
-  }, [router, activeGroupOrder]);
 
   const handleFilterChange = useCallback((filter: FilterType) => {
     if (Platform.OS !== "web") {
@@ -860,9 +827,6 @@ export default function DiscoveryFeed() {
             </View>
           </Animated.View>
         </ScrollView>
-
-        {/* Floating QR Button */}
-        <FloatingQRButton onPress={handleQRPress} />
 
         {/* Search Overlay */}
         {showSearch && <SearchOverlay onClose={() => setShowSearch(false)} />}
