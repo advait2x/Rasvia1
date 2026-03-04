@@ -72,6 +72,7 @@ import { useNotifications } from "@/lib/notifications-context";
 import {
   groupMembers,
   type CartItem,
+  type GroupMember,
 } from "@/data/mockData";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -90,6 +91,13 @@ export default function RestaurantDetail() {
   const { session } = useAuth();
   const { addEvent, refreshActive } = useNotifications();
   const { statusResult: hoursStatus, hours: restaurantHours } = useRestaurantHours(id);
+
+  // Resolved member list: override "You" avatar with real profile pic when available
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
+  const localGroupMembers = React.useMemo<GroupMember[]>(() => [
+    { ...groupMembers[0], avatar: userAvatarUrl ?? groupMembers[0].avatar },
+    ...groupMembers.slice(1),
+  ], [userAvatarUrl]);
 
   // ==================================================
   // STATE MANAGEMENT - Supabase Data
@@ -135,13 +143,14 @@ export default function RestaurantDetail() {
 
     supabase
       .from("profiles")
-      .select("full_name, dietary_type, restricted_days")
+      .select("full_name, dietary_type, restricted_days, avatar_url")
       .eq("id", session.user.id)
       .single()
       .then(({ data }) => {
         if (data?.full_name) setPartyLeaderName(data.full_name);
         if (data?.dietary_type) setUserDietaryType(data.dietary_type);
         if (data?.restricted_days) setUserRestrictedDays(data.restricted_days as string[]);
+        if ((data as any)?.avatar_url) setUserAvatarUrl((data as any).avatar_url);
       });
 
     if (id) {
@@ -405,7 +414,7 @@ export default function RestaurantDetail() {
         }
         return [
           ...prev,
-          { ...item, quantity: 1, addedBy: groupMembers[0] },
+          { ...item, quantity: 1, addedBy: localGroupMembers[0] },
         ];
       });
       setSelectedItem(null);
@@ -1286,7 +1295,7 @@ export default function RestaurantDetail() {
       {showCart && (
         <GroupCartDrawer
           items={cartItems}
-          members={groupMembers}
+          members={localGroupMembers}
           onClose={() => setShowCart(false)}
           onUpdateQuantity={handleUpdateQuantity}
           isGroupMode={hasActiveGroupSession}
@@ -1424,7 +1433,7 @@ export default function RestaurantDetail() {
                 }
                 if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setShowOrderTypePicker(false);
-                router.push("/host_party" as any);
+                router.push(`/host_party?restaurantId=${restaurant?.id}` as any);
               }}
               style={{
                 backgroundColor: isClosed ? "#141414" : "rgba(139,92,246,0.08)",

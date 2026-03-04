@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import * as ExpoClipboard from "expo-clipboard";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Stack } from "expo-router";
 import {
   ArrowLeft,
@@ -60,6 +60,7 @@ export default function HostPartyScreen() {
   const { addEvent } = useNotifications();
   const { userCoords } = useLocation();
   const closedRestaurantIds = useClosedRestaurantIds();
+  const { restaurantId: paramRestaurantId } = useLocalSearchParams<{ restaurantId?: string }>();
 
   const currentUserId = session?.user?.id;
   const activeOrderKey = currentUserId
@@ -81,11 +82,104 @@ export default function HostPartyScreen() {
     restaurantName: string;
   } | null>(null);
   const [checkingExisting, setCheckingExisting] = useState(true);
+  const autoStartFiredRef = useRef(false);
 
   useEffect(() => {
     checkExistingSession();
     fetchRestaurants();
   }, []);
+
+  // Auto-start a group order when a restaurantId param is provided
+  useEffect(() => {
+    if (!paramRestaurantId || autoStartFiredRef.current) return;
+    if (!session?.user?.id) return;
+    if (checkingExisting) return; // wait until we know if there's an existing session
+
+    autoStartFiredRef.current = true;
+
+    const run = async () => {
+      const { data, error } = await supabase
+        .from("restaurants")
+        .select("id, name, cuisine_tags, image_url, current_wait_time, lat, long")
+        .eq("id", paramRestaurantId)
+        .single();
+
+      if (error || !data) {
+        Alert.alert("Error", "Could not load restaurant info.");
+        return;
+      }
+
+      const r = data as Restaurant;
+
+      if (closedRestaurantIds.has(String(r.id))) {
+        Alert.alert("Restaurant Closed", `${r.name} is currently closed and cannot accept group orders.`);
+        return;
+      }
+
+      setSelectedRestaurant(r);
+      // handleStart reads selectedRestaurant from state, but since we're in an effect,
+      // we call the creation logic inline here to avoid stale-closure issues.
+      if (existingSession) {
+        Alert.alert(
+          "Active Order Exists",
+          `You already have an open group order at ${existingSession.restaurantName}. Cancel it or go to it first.`,
+          [
+            { text: "Go to Order", onPress: () => router.push(`/join/${existingSession.id}` as any) },
+            { text: "Dismiss", style: "cancel" },
+          ]
+        );
+        return;
+      }
+
+      setStep("starting");
+      if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      try {
+        const { data: sess, error: sessErr } = await supabase
+          .from("party_sessions")
+          .insert({
+            restaurant_id: r.id,
+            host_user_id: session!.user.id,
+            status: "open",
+          })
+          .select()
+          .single();
+
+        if (sessErr) throw sessErr;
+
+        const url = Linking.createURL(`/join/${sess.id}`);
+        setSessionId(sess.id);
+        setShareUrl(url);
+        setStep("created");
+
+        if (activeOrderKey) {
+          await AsyncStorage.setItem(
+            activeOrderKey,
+            JSON.stringify({
+              sessionId: sess.id,
+              restaurantName: r.name,
+              isHost: true,
+              joinedAt: new Date().toISOString(),
+            })
+          );
+        }
+
+        addEvent({
+          type: "group_created",
+          restaurantName: r.name,
+          restaurantId: String(r.id),
+          entryId: sess.id,
+          partySize: 1,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        Alert.alert("Error", err.message);
+        setStep("select");
+      }
+    };
+
+    run();
+  }, [paramRestaurantId, session?.user?.id, checkingExisting]);
 
   const checkExistingSession = async () => {
     setCheckingExisting(true);

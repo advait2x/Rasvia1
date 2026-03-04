@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
-import { Search, Bell, MapPin, TrendingUp, Zap, User, Map, UtensilsCrossed, ChevronRight, Users, Crown, X } from "lucide-react-native";
+import { Search, Bell, MapPin, TrendingUp, Zap, User, Map, UtensilsCrossed, ChevronRight, Users, Crown, X, RefreshCw, Sparkles, Clock } from "lucide-react-native";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -683,7 +683,7 @@ export default function DiscoveryFeed() {
               <Animated.View entering={FadeInDown.delay(450).duration(500)}>
                 <View className="px-5 mt-8 mb-4">
                   <View className="flex-row items-center mb-1">
-                    <Text style={{ fontSize: 18 }}>🔄</Text>
+                    <RefreshCw size={18} color="#FF9933" />
                     <Text style={{ fontFamily: "BricolageGrotesque_800ExtraBold", color: "#f5f5f5", fontSize: 24, marginLeft: 8 }}>
                       Order Again
                     </Text>
@@ -698,31 +698,84 @@ export default function DiscoveryFeed() {
                     return (
                       <Pressable
                         key={restaurant.id}
-                        onPress={() => handleRestaurantPress(restaurant.id)}
+                        onPress={() => {
+                          if (restaurant.waitStatus !== 'darkgrey') handleRestaurantPress(restaurant.id);
+                        }}
                         style={{
                           backgroundColor: "#141414",
                           borderRadius: 18,
                           borderWidth: 1,
-                          borderColor: "#2a2a2a",
+                          borderColor: restaurant.waitStatus === 'darkgrey' ? "#222" : "#2a2a2a",
                           padding: 14,
                           width: 200,
+                          opacity: restaurant.waitStatus === 'darkgrey' ? 0.7 : 1,
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          minHeight: 90,
                         }}
                       >
-                        <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 15, marginBottom: 4 }} numberOfLines={1}>
-                          {restaurant.name}
-                        </Text>
-                        {lastOrder?.itemsSummary ? (
-                          <Text style={{ fontFamily: "Manrope_500Medium", color: "#666", fontSize: 11, marginBottom: 10 }} numberOfLines={2}>
-                            Last: {lastOrder.itemsSummary}
+                        <View>
+                          <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: restaurant.waitStatus === 'darkgrey' ? "#555" : "#f5f5f5", fontSize: 15, marginBottom: 4 }} numberOfLines={1}>
+                            {restaurant.name}
                           </Text>
-                        ) : null}
-                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                          <View style={{ backgroundColor: "rgba(255,153,51,0.1)", borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,153,51,0.25)", paddingHorizontal: 8, paddingVertical: 4 }}>
-                            <Text style={{ fontFamily: "Manrope_700Bold", color: "#FF9933", fontSize: 11 }}>Order Again →</Text>
-                          </View>
-                          {restaurant.waitTime >= 0 && restaurant.waitTime < 999 && (
-                            <Text style={{ fontFamily: "Manrope_500Medium", color: "#555", fontSize: 11 }}>{restaurant.waitTime}m wait</Text>
+                          {lastOrder?.items?.length > 0 ? (
+                            <View style={{ marginBottom: 0 }}>
+                              {lastOrder.items.map((item, idx) => {
+                                const mpColor =
+                                  item.mealPeriod === 'breakfast' ? '#FBAB73' :
+                                  item.mealPeriod === 'lunch'     ? '#7ADC9E' :
+                                  item.mealPeriod === 'dinner'    ? '#B3BAFB' :
+                                  item.mealPeriod === 'specials'  ? '#F9C56D' :
+                                  item.mealPeriod === 'all_day'   ? '#BFC8D4' : '#999';
+                                return (
+                                  <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 }}>
+                                    <Text
+                                      numberOfLines={1}
+                                      style={{ fontFamily: "Manrope_500Medium", color: mpColor, fontSize: 11, flexShrink: 1 }}
+                                    >
+                                      {item.name}
+                                    </Text>
+                                    {item.quantity > 1 && (
+                                      <Text style={{ fontFamily: "Manrope_600SemiBold", color: '#06B6D4', fontSize: 9, flexShrink: 0 }}>
+                                        (×{item.quantity})
+                                      </Text>
+                                    )}
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          ) : lastOrder?.itemsSummary ? (
+                            <Text style={{ fontFamily: "Manrope_500Medium", color: "#555", fontSize: 11 }} numberOfLines={2}>
+                              {lastOrder.itemsSummary}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+                          {restaurant.waitStatus === 'darkgrey' ? (
+                            <View style={{ backgroundColor: "rgba(100,100,100,0.12)", borderRadius: 8, borderWidth: 1, borderColor: "rgba(100,100,100,0.2)", paddingHorizontal: 8, paddingVertical: 4 }}>
+                              <Text style={{ fontFamily: "Manrope_700Bold", color: "#555", fontSize: 11 }}>Closed</Text>
+                            </View>
+                          ) : (
+                            <View style={{ backgroundColor: "rgba(255,153,51,0.1)", borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,153,51,0.25)", paddingHorizontal: 8, paddingVertical: 4 }}>
+                              <Text style={{ fontFamily: "Manrope_700Bold", color: "#FF9933", fontSize: 11 }}>Order Again →</Text>
+                            </View>
                           )}
+                          {restaurant.waitStatus === 'darkgrey' ? (
+                            <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#444", fontSize: 11 }}>— closed</Text>
+                          ) : restaurant.waitTime >= 0 && restaurant.waitTime < 999 ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                              <Clock
+                                size={11}
+                                color={restaurant.waitStatus === 'green' ? '#22C55E' : restaurant.waitStatus === 'amber' ? '#F59E0B' : restaurant.waitStatus === 'red' ? '#EF4444' : '#888'}
+                                strokeWidth={2.5}
+                              />
+                              <Text style={{
+                                fontFamily: "JetBrainsMono_600SemiBold",
+                                color: restaurant.waitStatus === 'green' ? '#22C55E' : restaurant.waitStatus === 'amber' ? '#F59E0B' : restaurant.waitStatus === 'red' ? '#EF4444' : '#888',
+                                fontSize: 11
+                              }}>{restaurant.waitTime}m</Text>
+                            </View>
+                          ) : null}
                         </View>
                       </Pressable>
                     );
@@ -752,7 +805,7 @@ export default function DiscoveryFeed() {
               <Animated.View entering={FadeInDown.delay(500).duration(500)}>
                 <View className="px-5 mt-8 mb-4">
                   <View className="flex-row items-center mb-1">
-                    <Text style={{ fontSize: 18 }}>✨</Text>
+                    <Sparkles size={18} color="#818CF8" />
                     <Text style={{ fontFamily: "BricolageGrotesque_800ExtraBold", color: "#f5f5f5", fontSize: 24, marginLeft: 8 }}>
                       You May Like
                     </Text>
@@ -835,41 +888,43 @@ function CuisineChip({
   return (
     <Animated.View
       entering={FadeInRight.delay(index * 60).duration(400)}
-      style={[animatedStyle, { width: (SCREEN_WIDTH - 40 - 10) / 2 }]}
+      style={{ width: (SCREEN_WIDTH - 40 - 10) / 2 }}
     >
-      <Pressable
-        onPress={() => {
-          if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          onPress();
-        }}
-        onPressIn={() => { pressScale.value = withSpring(0.93); }}
-        onPressOut={() => { pressScale.value = withSpring(1); }}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          backgroundColor: "#1a1a1a",
-          borderRadius: 16,
-          borderWidth: 1,
-          borderColor: "#2a2a2a",
-          paddingVertical: 14,
-          paddingHorizontal: 16,
-          gap: 10,
-          width: "100%",
-        }}
-      >
-        <Text style={{ fontSize: 22 }}>{cuisine.emoji}</Text>
-        <Text
-          style={{
-            fontFamily: "Manrope_600SemiBold",
-            color: "#f5f5f5",
-            fontSize: 14,
-            flexShrink: 1,
+      <Animated.View style={animatedStyle}>
+        <Pressable
+          onPress={() => {
+            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onPress();
           }}
-          numberOfLines={1}
+          onPressIn={() => { pressScale.value = withSpring(0.93); }}
+          onPressOut={() => { pressScale.value = withSpring(1); }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: "#1a1a1a",
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: "#2a2a2a",
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+            gap: 10,
+            width: "100%",
+          }}
         >
-          {cuisine.label}
-        </Text>
-      </Pressable>
+          <Text style={{ fontSize: 22 }}>{cuisine.emoji}</Text>
+          <Text
+            style={{
+              fontFamily: "Manrope_600SemiBold",
+              color: "#f5f5f5",
+              fontSize: 14,
+              flexShrink: 1,
+            }}
+            numberOfLines={1}
+          >
+            {cuisine.label}
+          </Text>
+        </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }

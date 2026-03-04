@@ -10,6 +10,14 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 
+export type MealPeriod = 'breakfast' | 'lunch' | 'dinner' | 'specials' | 'all_day' | null;
+
+export interface LastOrderItem {
+  name: string;
+  quantity: number;
+  mealPeriod: MealPeriod;
+}
+
 export interface LastOrder {
   orderId: string;
   restaurantId: string;
@@ -17,6 +25,8 @@ export interface LastOrder {
   createdAt: string;
   /** Short summary of what was ordered, e.g. "Butter Chicken, Naan (×2)" */
   itemsSummary: string;
+  /** Structured items with meal period for colored display */
+  items: LastOrderItem[];
   subtotal: number;
 }
 
@@ -57,7 +67,7 @@ export function usePersonalization(): PersonalizationData {
           subtotal,
           created_at,
           restaurants ( name, cuisine_tags ),
-          order_items ( name, quantity )
+          order_items ( name, quantity, menu_item_id )
         `)
         .eq("created_by", userId)
         .in("status", ["completed", "served", "active", "preparing", "ready"])
@@ -68,6 +78,25 @@ export function usePersonalization(): PersonalizationData {
       if (!orders || orders.length === 0) {
         setData({ orderedRestaurantIds: [], topCuisineTags: [], lastOrderByRestaurant: {}, loading: false });
         return;
+      }
+
+      // ── Collect all unique menu_item_ids we need meal_period for ──
+      const menuItemIds = new Set<number>();
+      for (const o of orders) {
+        const items: { menu_item_id?: number }[] = (o.order_items as any) ?? [];
+        items.forEach(i => { if (i.menu_item_id) menuItemIds.add(i.menu_item_id); });
+      }
+      // Build a map: menu_item_id → meal_period
+      const mealPeriodMap: Record<number, MealPeriod> = {};
+      if (menuItemIds.size > 0) {
+        const { data: menuRows } = await supabase
+          .from("menu_items")
+          .select("id, meal_times")
+          .in("id", Array.from(menuItemIds));
+        (menuRows ?? []).forEach((r: any) => {
+          const first = Array.isArray(r.meal_times) ? r.meal_times[0] : (r.meal_times ?? null);
+          mealPeriodMap[r.id] = (first ?? null) as MealPeriod;
+        });
       }
 
       // ── Deduplicated restaurant IDs (most recent first) ──
@@ -100,11 +129,16 @@ export function usePersonalization(): PersonalizationData {
         const rid = o.restaurant_id?.toString();
         if (!rid || lastOrderByRestaurant[rid]) continue; // already have the most recent
 
-        const items: { name: string; quantity: number }[] = (o.order_items as any) ?? [];
-        const itemsSummary = items
-          .slice(0, 3)
+        const items: { name: string; quantity: number; menu_item_id?: number }[] = (o.order_items as any) ?? [];
+        const topItems = items.slice(0, 3);
+        const itemsSummary = topItems
           .map((i) => (i.quantity > 1 ? `${i.name} (×${i.quantity})` : i.name))
           .join(", ");
+        const structuredItems: LastOrderItem[] = topItems.map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          mealPeriod: i.menu_item_id != null ? (mealPeriodMap[i.menu_item_id] ?? null) : null,
+        }));
 
         lastOrderByRestaurant[rid] = {
           orderId: o.id.toString(),
@@ -112,6 +146,7 @@ export function usePersonalization(): PersonalizationData {
           restaurantName: (o.restaurants as any)?.name ?? "Restaurant",
           createdAt: o.created_at,
           itemsSummary,
+          items: structuredItems,
           subtotal: Number(o.subtotal),
         };
       }

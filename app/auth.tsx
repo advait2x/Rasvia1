@@ -293,6 +293,7 @@ export default function AuthScreen() {
                                             placeholderTextColor="#666666"
                                             value={firstName}
                                             onChangeText={setFirstName}
+                                            onFocus={() => { if (Platform.OS !== "web") Haptics.selectionAsync(); }}
                                             autoCapitalize="words"
                                             autoCorrect={false}
                                         />
@@ -311,7 +312,7 @@ export default function AuthScreen() {
                                         }}
                                     >
                                         <TextInput
-                                            style={{
+                                             style={{
                                                 flex: 1,
                                                 color: "#f5f5f5",
                                                 fontFamily: "Manrope_500Medium",
@@ -322,6 +323,7 @@ export default function AuthScreen() {
                                             placeholderTextColor="#666666"
                                             value={lastInitial}
                                             onChangeText={(text) => setLastInitial(text.slice(0, 1))}
+                                            onFocus={() => { if (Platform.OS !== "web") Haptics.selectionAsync(); }}
                                             maxLength={1}
                                             autoCapitalize="characters"
                                             autoCorrect={false}
@@ -367,6 +369,7 @@ export default function AuthScreen() {
                                         placeholderTextColor="#666666"
                                         value={phone}
                                         onChangeText={(v) => setPhone(formatPhoneNumber(v))}
+                                        onFocus={() => { if (Platform.OS !== "web") Haptics.selectionAsync(); }}
                                         keyboardType="phone-pad"
                                         autoCapitalize="none"
                                         autoCorrect={false}
@@ -389,7 +392,10 @@ export default function AuthScreen() {
                                 }}
                             >
                                 <Pressable
-                                    onPress={() => setUsePhone(false)}
+                                    onPress={() => {
+                                        if (Platform.OS !== "web") Haptics.selectionAsync();
+                                        setUsePhone(false);
+                                    }}
                                     style={{
                                         flex: 1,
                                         height: 36,
@@ -410,7 +416,10 @@ export default function AuthScreen() {
                                     </Text>
                                 </Pressable>
                                 <Pressable
-                                    onPress={() => setUsePhone(true)}
+                                    onPress={() => {
+                                        if (Platform.OS !== "web") Haptics.selectionAsync();
+                                        setUsePhone(true);
+                                    }}
                                     style={{
                                         flex: 1,
                                         height: 36,
@@ -461,6 +470,7 @@ export default function AuthScreen() {
                                     placeholderTextColor="#666666"
                                     value={email}
                                     onChangeText={setEmail}
+                                    onFocus={() => { if (Platform.OS !== "web") Haptics.selectionAsync(); }}
                                     keyboardType="email-address"
                                     autoCapitalize="none"
                                     autoCorrect={false}
@@ -496,6 +506,7 @@ export default function AuthScreen() {
                                     placeholderTextColor="#666666"
                                     value={phoneSignIn}
                                     onChangeText={(v) => setPhoneSignIn(formatPhoneNumber(v))}
+                                    onFocus={() => { if (Platform.OS !== "web") Haptics.selectionAsync(); }}
                                     keyboardType="phone-pad"
                                     autoCapitalize="none"
                                     autoCorrect={false}
@@ -530,6 +541,7 @@ export default function AuthScreen() {
                                 placeholderTextColor="#666666"
                                 value={password}
                                 onChangeText={setPassword}
+                                onFocus={() => { if (Platform.OS !== "web") Haptics.selectionAsync(); }}
                                 secureTextEntry={!showPassword}
                                 autoCapitalize="none"
                             />

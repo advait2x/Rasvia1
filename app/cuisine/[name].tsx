@@ -292,24 +292,25 @@ function CuisineRestaurantCard({
   return (
     <Animated.View
       entering={FadeInDown.delay(index * 80).duration(500)}
-      style={[animatedStyle, { marginBottom: 16 }]}
+      style={{ marginBottom: 16 }}
     >
-      <Pressable
-        onPress={onPress}
-        onPressIn={() => {
-          pressScale.value = withSpring(0.97);
-        }}
-        onPressOut={() => {
-          pressScale.value = withSpring(1);
-        }}
-        style={{
-          borderRadius: 20,
-          overflow: "hidden",
-          backgroundColor: "#1a1a1a",
-          borderWidth: 1,
-          borderColor: "#2a2a2a",
-        }}
-      >
+      <Animated.View style={animatedStyle}>
+        <Pressable
+          onPress={onPress}
+          onPressIn={() => {
+            pressScale.value = withSpring(0.97);
+          }}
+          onPressOut={() => {
+            pressScale.value = withSpring(1);
+          }}
+          style={{
+            borderRadius: 20,
+            overflow: "hidden",
+            backgroundColor: "#1a1a1a",
+            borderWidth: 1,
+            borderColor: "#2a2a2a",
+          }}
+        >
         <Image
           source={{ uri: restaurant.image }}
           style={{ width: "100%", height: 110 }}
@@ -398,6 +399,7 @@ function CuisineRestaurantCard({
           </View>
         </View>
       </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }

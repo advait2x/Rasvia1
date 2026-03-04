@@ -55,6 +55,23 @@ function getMemberColor(name: string, allNames: string[]): string {
     return MEMBER_COLORS[idx % MEMBER_COLORS.length];
 }
 
+function MemberAvatar({ name, color, size, avatarUrl }: { name: string; color: string; size: number; avatarUrl?: string | null }) {
+    const borderR = size / 2;
+    if (avatarUrl) {
+        return (
+            <Image
+                source={{ uri: avatarUrl }}
+                style={{ width: size, height: size, borderRadius: borderR, borderWidth: 2, borderColor: color }}
+            />
+        );
+    }
+    return (
+        <View style={{ width: size, height: size, borderRadius: borderR, backgroundColor: `${color}20`, borderWidth: 2, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color, fontSize: size * 0.38 }}>{name.charAt(0).toUpperCase()}</Text>
+        </View>
+    );
+}
+
 export default function JoinPartyScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
@@ -84,6 +101,7 @@ export default function JoinPartyScreen() {
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [showMemberBreakdown, setShowMemberBreakdown] = useState(true);
     const [itemQuantities, setItemQuantities] = useState<Record<string, number>>({});
+    const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
 
     const channelRef = useRef<any>(null);
     const fetchCartRef = useRef<() => Promise<void>>(async () => { });
@@ -105,6 +123,12 @@ export default function JoinPartyScreen() {
         cartItems.forEach(item => { if (item.added_by_name) names.add(item.added_by_name); });
         return Array.from(names);
     }, [cartItems]);
+
+    // Avatar map: name → url (only populated for current user right now)
+    const memberAvatarMap = useMemo<Record<string, string | null>>(() => {
+        if (!guestName || !userAvatarUrl) return {};
+        return { [guestName]: userAvatarUrl };
+    }, [guestName, userAvatarUrl]);
 
     const memberTotals = useMemo(() => {
         const totals: Record<string, { items: any[]; total: number }> = {};
@@ -199,14 +223,23 @@ export default function JoinPartyScreen() {
                     if (!storedName) {
                         const { data: profile } = await supabase
                             .from('profiles')
-                            .select('full_name')
+                            .select('full_name, avatar_url')
                             .eq('id', currentUserId)
                             .single();
                         const hostName = profile?.full_name || 'Host';
                         setGuestName(hostName);
                         setIsJoined(true);
                         AsyncStorage.setItem(nameKey, hostName);
+                        if ((profile as any)?.avatar_url) setUserAvatarUrl((profile as any).avatar_url);
+                    } else {
+                        // Still fetch avatar for existing host
+                        supabase.from('profiles').select('avatar_url').eq('id', currentUserId).single()
+                            .then(({ data }) => { if ((data as any)?.avatar_url) setUserAvatarUrl((data as any).avatar_url); });
                     }
+                } else if (currentUserId) {
+                    // Guest member — still fetch their avatar
+                    supabase.from('profiles').select('avatar_url').eq('id', currentUserId).single()
+                        .then(({ data }) => { if ((data as any)?.avatar_url) setUserAvatarUrl((data as any).avatar_url); });
                 }
 
                 const rest = sess.restaurants as any;
@@ -666,9 +699,7 @@ export default function JoinPartyScreen() {
                                     <View style={{ backgroundColor: '#1a1a1a', borderRadius: 16, borderWidth: 1, borderColor: '#2a2a2a', padding: 16, marginBottom: 10 }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                                                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: `${color}20`, borderWidth: 2, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
-                                                    <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color, fontSize: 13 }}>{name.charAt(0).toUpperCase()}</Text>
-                                                </View>
+                                                <MemberAvatar name={name} color={color} size={32} avatarUrl={memberAvatarMap[name]} />
                                                 <View>
                                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                                         <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 15 }}>{name}</Text>
@@ -883,9 +914,7 @@ export default function JoinPartyScreen() {
                             const memberData = memberTotals[name];
                             return (
                                 <View key={name} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1a1a1a', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#2a2a2a' }}>
-                                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: `${color}20`, borderWidth: 1.5, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
-                                        <Text style={{ fontFamily: 'Manrope_600SemiBold', color, fontSize: 9 }}>{name.charAt(0).toUpperCase()}</Text>
-                                    </View>
+                                    <MemberAvatar name={name} color={color} size={20} avatarUrl={memberAvatarMap[name]} />
                                     <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#ccc', fontSize: 12 }}>{name}</Text>
                                     <Text style={{ fontFamily: 'Manrope_500Medium', color: '#666', fontSize: 11 }}>${memberData?.total.toFixed(2) ?? '0.00'}</Text>
                                 </View>
@@ -1091,9 +1120,7 @@ export default function JoinPartyScreen() {
                                         {/* Member Header */}
                                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: `${color}20`, borderWidth: 2, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
-                                                    <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color, fontSize: 12 }}>{name.charAt(0).toUpperCase()}</Text>
-                                                </View>
+                                                <MemberAvatar name={name} color={color} size={28} avatarUrl={memberAvatarMap[name]} />
                                                 <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 15 }}>{name}</Text>
                                                 {name === guestName && isHost && <Crown size={12} color="#FF9933" />}
                                             </View>
@@ -1119,7 +1146,19 @@ export default function JoinPartyScreen() {
                                                     </Text>
                                                 </View>
                                                 {canRemove && !submitted && (
-                                                    <Pressable onPress={() => removeFromCart(item.id)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', alignItems: 'center', justifyContent: 'center', marginLeft: 10 }}>
+                                                    <Pressable
+                                                        onPress={() => {
+                                                            Alert.alert(
+                                                                'Remove Item',
+                                                                `Remove "${item.menu_items?.name ?? 'this item'}" from the order?`,
+                                                                [
+                                                                    { text: 'Cancel', style: 'cancel' },
+                                                                    { text: 'Remove', style: 'destructive', onPress: () => removeFromCart(item.id) },
+                                                                ]
+                                                            );
+                                                        }}
+                                                        style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', alignItems: 'center', justifyContent: 'center', marginLeft: 10 }}
+                                                    >
                                                         <Trash2 size={14} color="#EF4444" />
                                                     </Pressable>
                                                 )}
@@ -1141,10 +1180,8 @@ export default function JoinPartyScreen() {
                                 const qty = item.quantity ?? 1;
                                 return (
                                     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 16, borderWidth: 1, borderColor: '#2a2a2a', padding: 14, marginBottom: 10 }}>
-                                        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: `${memberColor}20`, borderWidth: 1.5, borderColor: memberColor, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                                            <Text style={{ fontFamily: 'Manrope_600SemiBold', color: memberColor, fontSize: 10 }}>{(item.added_by_name || '?').charAt(0).toUpperCase()}</Text>
-                                        </View>
-                                        <View style={{ flex: 1 }}>
+                                        <MemberAvatar name={item.added_by_name || '?'} color={memberColor} size={24} avatarUrl={memberAvatarMap[item.added_by_name]} />
+                                        <View style={{ flex: 1, marginLeft: 11 }}>
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                                 <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 15 }} numberOfLines={1}>
                                                     {item.menu_items?.name ?? 'Item'}
@@ -1163,7 +1200,19 @@ export default function JoinPartyScreen() {
                                             ${(Number(item.menu_items?.price ?? 0) * qty).toFixed(2)}
                                         </Text>
                                         {canRemove && !submitted && (
-                                            <Pressable onPress={() => removeFromCart(item.id)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Pressable
+                                                onPress={() => {
+                                                    Alert.alert(
+                                                        'Remove Item',
+                                                        `Remove "${item.menu_items?.name ?? 'this item'}" from the order?`,
+                                                        [
+                                                            { text: 'Cancel', style: 'cancel' },
+                                                            { text: 'Remove', style: 'destructive', onPress: () => removeFromCart(item.id) },
+                                                        ]
+                                                    );
+                                                }}
+                                                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', alignItems: 'center', justifyContent: 'center' }}
+                                            >
                                                 <Trash2 size={14} color="#EF4444" />
                                             </Pressable>
                                         )}

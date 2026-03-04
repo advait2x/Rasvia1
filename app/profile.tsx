@@ -14,7 +14,10 @@ import {
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Keyboard,
+  Image,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import {
@@ -44,6 +47,7 @@ import {
   RefreshCw,
   AlertTriangle,
   FileText,
+  Camera,
 } from "lucide-react-native";
 import Animated, {
   FadeIn,
@@ -141,6 +145,8 @@ export default function ProfileSettingsScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [pushPermissionDenied, setPushPermissionDenied] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   // Admin tab state (only used when isAdmin)
   const [activeTab, setActiveTab] = useState<'preferences' | 'location' | 'debug'>('preferences');
@@ -197,7 +203,7 @@ export default function ProfileSettingsScreen() {
         const { data, error } = await supabase
           .from("profiles")
           .select(
-            "location_city, dietary_type, restricted_days, full_name, created_at, saved_address, home_lat, home_long, phone_number",
+            "location_city, dietary_type, restricted_days, full_name, created_at, saved_address, home_lat, home_long, phone_number, avatar_url",
           )
           .eq("id", session.user.id)
           .maybeSingle();
@@ -227,6 +233,9 @@ export default function ProfileSettingsScreen() {
           setFullName(data.full_name || "");
           setPhoneNumber((data as any).phone_number || "");
           setCreatedAt(data.created_at);
+          if ((data as any).avatar_url) {
+            setAvatarUrl((data as any).avatar_url);
+          }
 
           const sAddr = data.saved_address || "";
           setSavedAddress(sAddr);
@@ -387,6 +396,77 @@ export default function ProfileSettingsScreen() {
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
 
+
+  async function handlePickAvatar() {
+    if (!session?.user?.id) return;
+
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your photo library to set a profile picture.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const asset = result.assets[0];
+      setUploadingAvatar(true);
+
+      // Read image as base64, then convert to ArrayBuffer for upload
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: 'base64' as any,
+      });
+
+      // Decode base64 → Uint8Array
+      const binaryStr = atob(base64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+
+      const fileName = `${session.user.id}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, bytes.buffer, {
+          upsert: true,
+          contentType: 'image/jpeg',
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get the public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      // Add a cache-busting param so React Native doesn't serve stale from cache
+      const urlWithBust = `${publicUrl}?t=${Date.now()}`;
+      console.log('[Avatar] Public URL:', urlWithBust);
+
+      // Save clean URL to profile (without cache buster)
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', session.user.id);
+
+      if (updateError) throw updateError;
+
+      setAvatarUrl(urlWithBust);
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err: any) {
+      console.error('[Avatar] Upload error:', err);
+      Alert.alert('Error', err.message || 'Could not upload photo.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
 
   async function handleLogout() {
     if (Platform.OS !== "web") {
@@ -782,7 +862,9 @@ export default function ProfileSettingsScreen() {
             >
               <Edit2 size={14} color="#FF9933" />
             </Pressable>
-            <View
+            {/* Avatar circle — tappable to change photo */}
+            <Pressable
+              onPress={handlePickAvatar}
               style={{
                 width: 80,
                 height: 80,
@@ -793,10 +875,41 @@ export default function ProfileSettingsScreen() {
                 alignItems: "center",
                 justifyContent: "center",
                 marginBottom: 16,
+                overflow: "hidden",
               }}
             >
-              <User size={36} color="#FF9933" />
-            </View>
+              {uploadingAvatar ? (
+                <ActivityIndicator color="#FF9933" />
+              ) : avatarUrl ? (
+                <Image
+                  source={{ uri: avatarUrl }}
+                  style={{ width: 80, height: 80, borderRadius: 40 }}
+                  onError={(e) => {
+                    console.warn('[Avatar] Image load error:', e.nativeEvent.error, 'url:', avatarUrl);
+                    setAvatarUrl(null);
+                  }}
+                />
+              ) : (
+                <User size={36} color="#FF9933" />
+              )}
+              {/* Camera overlay */}
+              {!uploadingAvatar && (
+                <View
+                  style={{
+                    position: "absolute",
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: 26,
+                    backgroundColor: "rgba(0,0,0,0.55)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Camera size={13} color="#fff" />
+                </View>
+              )}
+            </Pressable>
             <Text
               style={{
                 fontFamily: "Manrope_600SemiBold",
@@ -1235,214 +1348,12 @@ export default function ProfileSettingsScreen() {
             </Animated.View>
           )}
 
-          {/* Settings List — always shown */}
-          {(!isAdmin || activeTab === 'preferences') && (
-            <Animated.View
-              entering={FadeInDown.delay(200).duration(500)}
-              className="mx-5 mb-8"
-              style={{
-                backgroundColor: "#1a1a1a",
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: "#2a2a2a",
-                overflow: "hidden",
-              }}
-            >
-              <SettingsRow
-                icon={<ShoppingBag size={20} color="#FF9933" />}
-                label="My Orders"
-                hasChevron
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                  router.push("/my-orders" as any);
-                }}
-              />
-              <Divider />
-              <SettingsRow
-                icon={<CreditCard size={20} color="#FF9933" />}
-                label="Payment Methods"
-                hasChevron
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                }}
-              />
-              <Divider />
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingHorizontal: 20,
-                  paddingVertical: 16,
-                }}
-              >
-                <View
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 12,
-                    backgroundColor: "rgba(255, 153, 51, 0.12)",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginRight: 14,
-                  }}
-                >
-                  <Bell size={20} color="#FF9933" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_600SemiBold",
-                      color: "#f5f5f5",
-                      fontSize: 15,
-                    }}
-                  >
-                    Notifications
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_500Medium",
-                      color: notificationsEnabled ? "#22C55E" : "#EF4444",
-                      fontSize: 11,
-                      marginTop: 2,
-                    }}
-                  >
-                    {notificationsEnabled ? "Active" : "Inactive"}
-                  </Text>
-                </View>
-                <Switch
-                  value={notificationsEnabled}
-                  onValueChange={async (val) => {
-                    if (Platform.OS !== "web") Haptics.selectionAsync();
-                    if (val) {
-                      const granted = await enablePushNotifications();
-                      setNotificationsEnabled(granted);
-                      if (!granted) {
-                        Alert.alert(
-                          "Notifications Blocked",
-                          "Please enable notifications in your device Settings.",
-                        );
-                      }
-                    } else {
-                      await disablePushNotifications();
-                      setNotificationsEnabled(false);
-                    }
-                  }}
-                  trackColor={{ false: "#333333", true: "rgba(255,153,51,0.4)" }}
-                  thumbColor={notificationsEnabled ? "#FF9933" : "#666666"}
-                />
-              </View>
-              <Divider />
-              <SettingsRow
-                icon={<Heart size={20} color="#EF4444" />}
-                label="Favorites"
-                hasChevron
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                  router.push("/favorites" as any);
-                }}
-              />
-              <Divider />
-              <SettingsRow
-                icon={<Shield size={20} color="#888888" />}
-                label="Privacy Policy"
-                hasChevron
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                  router.push("/privacy" as any);
-                }}
-              />
-              <Divider />
-              <SettingsRow
-                icon={<FileText size={20} color="#888888" />}
-                label="Terms of Service"
-                hasChevron
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                  router.push("/terms" as any);
-                }}
-              />
-            </Animated.View>
-          )}
-
           {/* ==========================================
-                      DANGER ZONE — Delete Account
-              ========================================== */}
-          {(!isAdmin || activeTab === 'preferences') && (
-            <Animated.View
-              entering={FadeInDown.delay(260).duration(500)}
-              className="mx-5 mb-8"
-            >
-              <View
-                style={{
-                  backgroundColor: "rgba(239,68,68,0.05)",
-                  borderRadius: 20,
-                  borderWidth: 1,
-                  borderColor: "rgba(239,68,68,0.2)",
-                  padding: 20,
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: "BricolageGrotesque_700Bold",
-                    color: "#EF4444",
-                    fontSize: 16,
-                    marginBottom: 6,
-                  }}
-                >
-                  Danger Zone
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: "Manrope_500Medium",
-                    color: "#999",
-                    fontSize: 13,
-                    lineHeight: 19,
-                    marginBottom: 16,
-                  }}
-                >
-                  Permanently deletes your account and all associated data. This cannot be undone.
-                </Text>
-                <Pressable
-                  onPress={handleDeleteAccount}
-                  disabled={deletingAccount}
-                  style={{
-                    backgroundColor: "rgba(239,68,68,0.1)",
-                    borderWidth: 1,
-                    borderColor: "rgba(239,68,68,0.4)",
-                    borderRadius: 14,
-                    height: 48,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexDirection: "row",
-                    gap: 8,
-                    opacity: deletingAccount ? 0.5 : 1,
-                  }}
-                >
-                  {deletingAccount ? (
-                    <ActivityIndicator color="#EF4444" size="small" />
-                  ) : (
-                    <LogOut size={16} color="#EF4444" />
-                  )}
-                  <Text
-                    style={{
-                      fontFamily: "BricolageGrotesque_700Bold",
-                      color: "#EF4444",
-                      fontSize: 15,
-                    }}
-                  >
-                    {deletingAccount ? "Deleting…" : "Delete My Account"}
-                  </Text>
-                </Pressable>
-              </View>
-            </Animated.View>
-          )}
-
-          {/* ==========================================
-                        LOCATION SETTINGS SECTION
-                    ========================================== */}
+                      LOCATION SETTINGS SECTION
+                  ========================================== */}
           {(!isAdmin || activeTab === 'location') && (
             <Animated.View
-              entering={FadeInDown.delay(220).duration(500)}
+              entering={FadeInDown.delay(200).duration(500)}
               className="mx-5 mb-8"
             >
               {/* Section Header */}
@@ -1645,6 +1556,136 @@ export default function ProfileSettingsScreen() {
               </View>
             </Animated.View>
           )}
+
+          {/* Settings List — always shown */}
+          {(!isAdmin || activeTab === 'preferences') && (
+            <Animated.View
+              entering={FadeInDown.delay(220).duration(500)}
+              className="mx-5 mb-8"
+              style={{
+                backgroundColor: "#1a1a1a",
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: "#2a2a2a",
+                overflow: "hidden",
+              }}
+            >
+              <SettingsRow
+                icon={<ShoppingBag size={20} color="#FF9933" />}
+                label="My Orders"
+                hasChevron
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                  router.push("/my-orders" as any);
+                }}
+              />
+              <Divider />
+              <SettingsRow
+                icon={<CreditCard size={20} color="#FF9933" />}
+                label="Payment Methods"
+                hasChevron
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                }}
+              />
+              <Divider />
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 20,
+                  paddingVertical: 16,
+                }}
+              >
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    backgroundColor: "rgba(255, 153, 51, 0.12)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: 14,
+                  }}
+                >
+                  <Bell size={20} color="#FF9933" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_600SemiBold",
+                      color: "#f5f5f5",
+                      fontSize: 15,
+                    }}
+                  >
+                    Notifications
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Manrope_500Medium",
+                      color: notificationsEnabled ? "#22C55E" : "#EF4444",
+                      fontSize: 11,
+                      marginTop: 2,
+                    }}
+                  >
+                    {notificationsEnabled ? "Active" : "Inactive"}
+                  </Text>
+                </View>
+                <Switch
+                  value={notificationsEnabled}
+                  onValueChange={async (val) => {
+                    if (Platform.OS !== "web") Haptics.selectionAsync();
+                    if (val) {
+                      const granted = await enablePushNotifications();
+                      setNotificationsEnabled(granted);
+                      if (!granted) {
+                        Alert.alert(
+                          "Notifications Blocked",
+                          "Please enable notifications in your device Settings.",
+                        );
+                      }
+                    } else {
+                      await disablePushNotifications();
+                      setNotificationsEnabled(false);
+                    }
+                  }}
+                  trackColor={{ false: "#333333", true: "rgba(255,153,51,0.4)" }}
+                  thumbColor={notificationsEnabled ? "#FF9933" : "#666666"}
+                />
+              </View>
+              <Divider />
+              <SettingsRow
+                icon={<Heart size={20} color="#EF4444" />}
+                label="Favorites"
+                hasChevron
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                  router.push("/favorites" as any);
+                }}
+              />
+              <Divider />
+              <SettingsRow
+                icon={<Shield size={20} color="#888888" />}
+                label="Privacy Policy"
+                hasChevron
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                  router.push("/privacy" as any);
+                }}
+              />
+              <Divider />
+              <SettingsRow
+                icon={<FileText size={20} color="#888888" />}
+                label="Terms of Service"
+                hasChevron
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                  router.push("/terms" as any);
+                }}
+              />
+            </Animated.View>
+          )}
+
 
           {/* ==========================================
                         DEBUG TAB (Admin only)
@@ -1913,6 +1954,79 @@ export default function ProfileSettingsScreen() {
                 </View>
                 <ChevronRight size={18} color="#FF9933" />
               </Pressable>
+            </Animated.View>
+          )}
+
+          {/* ==========================================
+                      DANGER ZONE — Delete Account
+              ========================================== */}
+          {(!isAdmin || activeTab === 'preferences') && (
+            <Animated.View
+              entering={FadeInDown.delay(300).duration(500)}
+              className="mx-5 mb-8"
+            >
+              <View
+                style={{
+                  backgroundColor: "rgba(239,68,68,0.05)",
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: "rgba(239,68,68,0.2)",
+                  padding: 20,
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "BricolageGrotesque_700Bold",
+                    color: "#EF4444",
+                    fontSize: 16,
+                    marginBottom: 6,
+                  }}
+                >
+                  Danger Zone
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Manrope_500Medium",
+                    color: "#999",
+                    fontSize: 13,
+                    lineHeight: 19,
+                    marginBottom: 16,
+                  }}
+                >
+                  Permanently deletes your account and all associated data. This cannot be undone.
+                </Text>
+                <Pressable
+                  onPress={handleDeleteAccount}
+                  disabled={deletingAccount}
+                  style={{
+                    backgroundColor: "rgba(239,68,68,0.1)",
+                    borderWidth: 1,
+                    borderColor: "rgba(239,68,68,0.4)",
+                    borderRadius: 14,
+                    height: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexDirection: "row",
+                    gap: 8,
+                    opacity: deletingAccount ? 0.5 : 1,
+                  }}
+                >
+                  {deletingAccount ? (
+                    <ActivityIndicator color="#EF4444" size="small" />
+                  ) : (
+                    <LogOut size={16} color="#EF4444" />
+                  )}
+                  <Text
+                    style={{
+                      fontFamily: "BricolageGrotesque_700Bold",
+                      color: "#EF4444",
+                      fontSize: 15,
+                    }}
+                  >
+                    {deletingAccount ? "Deleting…" : "Delete My Account"}
+                  </Text>
+                </Pressable>
+              </View>
             </Animated.View>
           )}
 

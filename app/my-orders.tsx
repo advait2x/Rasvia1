@@ -17,6 +17,10 @@ import {
   Truck,
   UtensilsCrossed,
   CheckCircle2,
+  ClipboardList,
+  ChefHat,
+  Sparkles,
+  XCircle,
   Flame,
 } from "lucide-react-native";
 import Animated, {
@@ -65,13 +69,13 @@ type TrackingStep = "received" | "preparing" | "ready" | "completed";
 const TRACKING_STEPS: {
   key: TrackingStep;
   label: string;
-  emoji: string;
+  Icon: React.ComponentType<{ size: number; color: string }>;
   color: string;
 }[] = [
-    { key: "received", label: "Received", emoji: "📋", color: "#FF9933" },
-    { key: "preparing", label: "Preparing", emoji: "👨‍🍳", color: "#F59E0B" },
-    { key: "ready", label: "Ready", emoji: "🛍️", color: "#22C55E" },
-    { key: "completed", label: "Done", emoji: "🎉", color: "#10B981" },
+    { key: "received", label: "Received", Icon: ClipboardList, color: "#FF9933" },
+    { key: "preparing", label: "Preparing", Icon: ChefHat, color: "#F59E0B" },
+    { key: "ready", label: "Ready", Icon: ShoppingBag, color: "#22C55E" },
+    { key: "completed", label: "Done", Icon: Sparkles, color: "#10B981" },
   ];
 
 /** Map the database status to our simplified tracking step index */
@@ -173,7 +177,7 @@ function OrderProgressStepper({ status }: { status: OrderStatus }) {
           gap: 6,
         }}
       >
-        <Text style={{ fontSize: 24 }}>❌</Text>
+        <XCircle size={28} color="#EF4444" />
         <Text
           style={{
             fontFamily: "BricolageGrotesque_700Bold",
@@ -250,14 +254,12 @@ function OrderProgressStepper({ status }: { status: OrderStatus }) {
                 ) : isActive ? (
                   <PulsingDot color={step.color} />
                 ) : (
-                  <Text
-                    style={{
-                      fontSize: isActive ? 18 : 14,
-                      opacity: 0.4,
-                    }}
-                  >
-                    {step.emoji}
-                  </Text>
+                  <View style={{ opacity: 0.35 }}>
+                    <step.Icon
+                      size={isActive ? 18 : 14}
+                      color={step.color}
+                    />
+                  </View>
                 )}
               </Animated.View>
             </React.Fragment>

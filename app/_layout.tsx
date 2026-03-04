@@ -108,8 +108,10 @@ function AuthGate() {
 
     const inAuthScreen = segments[0] === "auth";
     const inOnboarding = segments[0] === "onboarding";
+    // Allow unauthenticated access to legal pages
+    const inPublicRoute = inAuthScreen || segments[0] === "terms" || segments[0] === "privacy";
 
-    if (!session && !inAuthScreen) {
+    if (!session && !inPublicRoute) {
       router.replace("/auth");
     } else if (session && inAuthScreen) {
       if (needsOnboarding) {
@@ -233,6 +235,14 @@ function AuthGate() {
       <Stack.Screen
         name="order-confirmation"
         options={{ headerShown: false, animation: "slide_from_bottom" }}
+      />
+      <Stack.Screen
+        name="terms"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
+        name="privacy"
+        options={{ headerShown: false, animation: "slide_from_right" }}
       />
     </Stack>
   );
