@@ -87,7 +87,9 @@ export default function RestaurantDetail() {
   const { userCoords } = useLocation();
   const userCoordsRef = useRef(userCoords);
   useEffect(() => { userCoordsRef.current = userCoords; }, [userCoords]);
-  const { isAdmin } = useAdminMode();
+  const { isAdmin, isRestaurantOwner, ownedRestaurantId } = useAdminMode();
+  // owners can manage their own restaurant (same controls as admin, but scoped)
+  const canManage = isAdmin || (isRestaurantOwner && ownedRestaurantId === id);
   const { session } = useAuth();
   const { addEvent, refreshActive } = useNotifications();
   const { statusResult: hoursStatus, hours: restaurantHours } = useRestaurantHours(id);
@@ -441,13 +443,18 @@ export default function RestaurantDetail() {
 
   const handleJoinWaitlist = useCallback(() => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    // Restaurant owners don't join waitlists
+    if (isRestaurantOwner) {
+      Alert.alert("Not Available", "Restaurant owners can't join customer waitlists.");
+      return;
+    }
     if (existingEntry) {
       router.push(`/waitlist/${restaurant?.id}?entry_id=${existingEntry.id}&party_size=${existingEntry.party_size}` as any);
       return;
     }
     // Show order type picker first (Takeout vs Dine In)
     setShowOrderTypePicker(true);
-  }, [existingEntry, restaurant?.id, router]);
+  }, [existingEntry, restaurant?.id, router, isRestaurantOwner]);
 
   const handleConfirmJoin = useCallback(async () => {
     const size = customParty.trim() !== "" ? parseInt(customParty, 10) : partySize;
@@ -763,7 +770,7 @@ export default function RestaurantDetail() {
                   <ArrowLeft size={22} color="#f5f5f5" />
                 </Pressable>
                 <View className="flex-row">
-                  {isAdmin && (
+                  {canManage && (
                     <Pressable
                       className="mr-2"
                       onPress={() => {
@@ -778,10 +785,10 @@ export default function RestaurantDetail() {
                         alignItems: "center",
                         justifyContent: "center",
                         borderWidth: 1,
-                        borderColor: "rgba(255,153,51,0.4)",
+                        borderColor: isAdmin ? "rgba(255,153,51,0.4)" : "rgba(74,222,128,0.4)",
                       }}
                     >
-                      <Settings size={20} color="#FF9933" />
+                      <Settings size={20} color={isAdmin ? "#FF9933" : "#4ADE80"} />
                     </Pressable>
                   )}
                   <Pressable

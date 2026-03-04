@@ -29,6 +29,7 @@ function EditableMenuItem({
   onQuickAdd,
   onItemUpdated,
   onDelete,
+  canEdit,
 }: {
   item: UIMenuItem;
   index: number;
@@ -36,8 +37,8 @@ function EditableMenuItem({
   onQuickAdd: () => void;
   onItemUpdated: (updatedItem: UIMenuItem) => void;
   onDelete: (id: string) => void;
+  canEdit: boolean;
 }) {
-  const { isAdmin } = useAdminMode();
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editField, setEditField] = useState<EditableField | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -242,7 +243,7 @@ function EditableMenuItem({
         onPress={onPress}
         onQuickAdd={onQuickAdd}
       />
-      {isAdmin && (
+      {canEdit && (
         <View
           style={{
             position: "absolute",
@@ -371,7 +372,8 @@ interface MenuEditorProps {
 }
 
 export function MenuEditor({ menu, setMenu, onItemPress, onQuickAdd, restaurantId }: MenuEditorProps) {
-  const { isAdmin } = useAdminMode();
+  const { isAdmin, isRestaurantOwner, ownedRestaurantId } = useAdminMode();
+  const canEdit = isAdmin || (isRestaurantOwner && !!restaurantId && restaurantId === ownedRestaurantId);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [showAddItem, setShowAddItem] = useState(false);
@@ -445,7 +447,7 @@ export function MenuEditor({ menu, setMenu, onItemPress, onQuickAdd, restaurantI
 
   return (
     <View>
-      {isAdmin && (
+      {canEdit && (
         <View style={{
           flexDirection: "row", justifyContent: "flex-end",
           marginBottom: 12, gap: 8,
@@ -482,6 +484,7 @@ export function MenuEditor({ menu, setMenu, onItemPress, onQuickAdd, restaurantI
               onQuickAdd={() => onQuickAdd(item)}
               onItemUpdated={handleItemUpdated}
               onDelete={handleDelete}
+              canEdit={canEdit}
             />
           ))}
         </View>
@@ -495,6 +498,7 @@ export function MenuEditor({ menu, setMenu, onItemPress, onQuickAdd, restaurantI
               onQuickAdd={() => onQuickAdd(item)}
               onItemUpdated={handleItemUpdated}
               onDelete={handleDelete}
+              canEdit={canEdit}
             />
           ))}
         </View>
