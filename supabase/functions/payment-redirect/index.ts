@@ -10,16 +10,16 @@ serve(async (req: Request) => {
   const status = url.searchParams.get('status') // 'success' | 'cancel'
   const stripeSessionId = url.searchParams.get('session_id')
 
+  // Helper: return a 302 redirect to a deep link URL
+  const redirect = (deepLink: string) =>
+    new Response(null, {
+      status: 302,
+      headers: { 'Location': deepLink },
+    })
+
   // ── Cancel / user-dismissed ────────────────────────────────────────
   if (status === 'cancel') {
-    return new Response(buildHTML({
-      title: 'Payment Cancelled',
-      subtitle: 'Your payment was not processed. No charges were made.',
-      icon: '✕',
-      iconBg: '#EF4444',
-      deepLink: 'rasvia://checkout/cancel',
-      buttonLabel: 'Return to Rasvia',
-    }), { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+    return redirect('rasvia://checkout/cancel')
   }
 
   // ── Success path: verify + save order ──────────────────────────────
@@ -34,14 +34,7 @@ serve(async (req: Request) => {
       const session = await stripe.checkout.sessions.retrieve(stripeSessionId)
 
       if (session.payment_status !== 'paid') {
-        return new Response(buildHTML({
-          title: 'Payment Incomplete',
-          subtitle: 'Your payment could not be confirmed. Please try again or contact support.',
-          icon: '⚠',
-          iconBg: '#F59E0B',
-          deepLink: 'rasvia://checkout/error?reason=payment_incomplete',
-          buttonLabel: 'Return to Rasvia',
-        }), { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+        return redirect('rasvia://checkout/error?reason=payment_incomplete')
       }
 
       // 2. Extract metadata we stashed during checkout creation
@@ -134,7 +127,7 @@ serve(async (req: Request) => {
         }
       }
 
-      // 4. Build deep link with order info
+      // 4. Build deep link with order info and redirect
       const deepLinkParams = new URLSearchParams()
       if (orderId) deepLinkParams.set('order_id', String(orderId))
       deepLinkParams.set('restaurant_name', restaurantName)
@@ -142,46 +135,16 @@ serve(async (req: Request) => {
       deepLinkParams.set('total', subtotal.toFixed(2))
       if (partySessionId) deepLinkParams.set('party_session_id', partySessionId)
 
-      const deepLink = `rasvia://order-confirmation?${deepLinkParams.toString()}`
-
-      // Pickup / seating instructions
-      const instructions = orderType === 'takeout'
-        ? 'Your order is being prepared. You\'ll be notified when it\'s ready for pickup! 🛍️'
-        : 'Your order has been sent to the kitchen. Head to your table when called! 🍽️'
-
-      return new Response(buildHTML({
-        title: 'Payment Successful!',
-        subtitle: `$${subtotal.toFixed(2)} paid to ${restaurantName}`,
-        instructions,
-        icon: '✓',
-        iconBg: '#22C55E',
-        deepLink,
-        buttonLabel: 'Continue to Rasvia',
-        orderId: orderId ? String(orderId) : undefined,
-      }), { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+      return redirect(`rasvia://order-confirmation?${deepLinkParams.toString()}`)
 
     } catch (err: any) {
       console.error('Payment redirect error:', err)
-      return new Response(buildHTML({
-        title: 'Something Went Wrong',
-        subtitle: err.message || 'An unexpected error occurred. Your payment may still have been processed.',
-        icon: '⚠',
-        iconBg: '#EF4444',
-        deepLink: `rasvia://checkout/error?reason=${encodeURIComponent(err.message || 'unknown')}`,
-        buttonLabel: 'Return to Rasvia',
-      }), { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+      return redirect(`rasvia://checkout/error?reason=${encodeURIComponent(err.message || 'unknown')}`)
     }
   }
 
   // ── Fallback: unknown status ───────────────────────────────────────
-  return new Response(buildHTML({
-    title: 'Redirecting…',
-    subtitle: 'Taking you back to the app.',
-    icon: '↻',
-    iconBg: '#818CF8',
-    deepLink: 'rasvia://checkout/cancel',
-    buttonLabel: 'Return to Rasvia',
-  }), { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+  return redirect('rasvia://checkout/cancel')
 })
 
 // ── HTML page builder ────────────────────────────────────────────────

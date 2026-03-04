@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import { View, ActivityIndicator, Platform, Alert } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
@@ -149,18 +150,22 @@ function AuthGate() {
           [{ text: 'OK', onPress: () => router.replace('/') }],
         );
       } else if (path === 'order-confirmation') {
-        // Navigate to the order confirmation screen with params
+        // Dismiss the in-app browser sheet that Stripe checkout was in
+        try { WebBrowser.dismissBrowser(); } catch { }
         const params = queryParams as any;
-        router.push({
-          pathname: '/order-confirmation' as any,
-          params: {
-            order_id: params?.order_id || '',
-            restaurant_name: params?.restaurant_name || '',
-            order_type: params?.order_type || 'dine_in',
-            total: params?.total || '0',
-            party_session_id: params?.party_session_id || '',
-          },
-        });
+        // Small delay to let browser dismissal complete before navigation
+        setTimeout(() => {
+          router.replace({
+            pathname: '/order-confirmation' as any,
+            params: {
+              order_id: params?.order_id || '',
+              restaurant_name: params?.restaurant_name || '',
+              order_type: params?.order_type || 'dine_in',
+              total: params?.total || '0',
+              party_session_id: params?.party_session_id || '',
+            },
+          });
+        }, 300);
       }
     };
 

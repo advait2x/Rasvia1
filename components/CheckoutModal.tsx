@@ -11,6 +11,9 @@ import {
     Platform,
     KeyboardAvoidingView,
 } from "react-native";
+import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
+import { useRouter } from "expo-router";
 import {
     X,
     UtensilsCrossed,
@@ -25,6 +28,8 @@ import {
     Coffee,
     Sun,
     Moon,
+    CreditCard,
+    Wallet,
 } from "lucide-react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
@@ -112,6 +117,7 @@ export function CheckoutModal({
     initialCustomerName,
 }: CheckoutModalProps) {
     const { session } = useAuth();
+    const router = useRouter();
 
     // If we have a waitlist entry it's a silent pre_order; otherwise use initialOrderType or dine_in.
     const defaultType: OrderType = waitlistEntryId
@@ -138,6 +144,9 @@ export function CheckoutModal({
     const [placing, setPlacing] = useState(false);
     const [done, setDone] = useState(false);
     const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
+    const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
+    const [hasStripe, setHasStripe] = useState(false);
+    const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
 
     const subtotal = cartItems.reduce((s, i) => s + i.price * i.quantity, 0);
 
@@ -155,12 +164,69 @@ export function CheckoutModal({
         setPlacing(false);
         setDone(false);
         setPlacedOrderId(null);
+        setPaymentMethod('cash');
     }, [defaultType, session, initialCustomerName]);
 
     const handleClose = () => {
         reset();
         onClose();
     };
+
+    // Fetch the restaurant's Stripe account when the modal opens
+    useEffect(() => {
+        if (!visible || !restaurantId) return;
+        (async () => {
+            try {
+                const { data } = await supabase
+                    .from('restaurants')
+                    .select('stripe_account_id')
+                    .eq('id', Number(restaurantId))
+                    .single();
+                if (data?.stripe_account_id) {
+                    setHasStripe(true);
+                    setStripeAccountId(data.stripe_account_id);
+                } else {
+                    setHasStripe(false);
+                    setStripeAccountId(null);
+                    setPaymentMethod('cash');
+                }
+            } catch {
+                setHasStripe(false);
+                setStripeAccountId(null);
+                setPaymentMethod('cash');
+            }
+        })();
+    }, [visible, restaurantId]);
+
+    // Deep link handler for card payment redirect
+    useEffect(() => {
+        if (!visible || paymentMethod !== 'card') return;
+
+        const handleUrl = (event: { url: string }) => {
+            const { path, queryParams } = Linking.parse(event.url);
+            if (path === 'order-confirmation') {
+                try { WebBrowser.dismissBrowser(); } catch { }
+                const params = queryParams as any;
+                setDone(true);
+                setPlacedOrderId(params?.order_id || null);
+                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                onOrderPlaced(params?.order_id || '', orderType);
+            } else if (path === 'checkout/cancel') {
+                try { WebBrowser.dismissBrowser(); } catch { }
+                setPlacing(false);
+                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                Alert.alert('Payment Cancelled', 'Your payment was not processed. No charges were made.');
+            } else if (path === 'checkout/error') {
+                try { WebBrowser.dismissBrowser(); } catch { }
+                setPlacing(false);
+                if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                Alert.alert('Payment Error', 'Something went wrong. Please try again.');
+            }
+        };
+
+        const subscription = Linking.addEventListener('url', handleUrl);
+        return () => subscription.remove();
+    }, [visible, paymentMethod, orderType, onOrderPlaced]);
 
     const handlePlaceOrder = async () => {
         if (cartItems.length === 0) {
@@ -176,10 +242,92 @@ export function CheckoutModal({
         setPlacing(true);
 
         try {
+            // ── Card Payment Flow ──
+            if (paymentMethod === 'card' && stripeAccountId) {
+                const cartMeta = cartItems.map((i) => ({
+                    name: i.name,
+                    price: i.price,
+                    quantity: i.quantity,
+                    menu_item_id: Number(i.id),
+                    is_vegetarian: i.isVegetarian ?? false,
+                    added_by: customerName.trim() || '',
+                }));
+
+                const { data: fnData, error: fnError } = await supabase.functions.invoke(
+                    'create-checkout',
+                    {
+                        body: {
+                            restaurant_id: Number(restaurantId),
+                            stripe_account_id: stripeAccountId,
+                            amount: subtotal,
+                            cart_items: cartMeta,
+                            restaurant_name: restaurantName,
+                            customer_name: customerName.trim(),
+                            user_id: session.user.id,
+                            order_type: orderType,
+                        },
+                    }
+                );
+
+                if (fnError) throw fnError;
+                const checkoutUrl: string = fnData?.url;
+                if (!checkoutUrl) throw new Error('No checkout URL returned.');
+
+                // Use openAuthSessionAsync so the browser auto-closes when
+                // the payment-redirect page fires the rasvia:// deep link.
+                const result = await WebBrowser.openAuthSessionAsync(
+                    checkoutUrl,
+                    'rasvia://'
+                );
+
+                if (result.type === 'success' && result.url) {
+                    const rawUrl = result.url;
+                    // Parse query params robustly — works for both rasvia://order-confirmation?...
+                    // and rasvia:///order-confirmation?... style URLs
+                    const qIndex = rawUrl.indexOf('?');
+                    const qString = qIndex >= 0 ? rawUrl.slice(qIndex + 1) : '';
+                    const sp = new URLSearchParams(qString);
+                    const params = {
+                        order_id: sp.get('order_id') || '',
+                        restaurant_name: sp.get('restaurant_name') || restaurantName,
+                        order_type: sp.get('order_type') || orderType,
+                        total: sp.get('total') || subtotal.toFixed(2),
+                        party_session_id: sp.get('party_session_id') || '',
+                    };
+
+                    if (rawUrl.includes('order-confirmation')) {
+                        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        onClose();
+                        reset();
+                        onOrderPlaced(params.order_id, orderType);
+                        setTimeout(() => {
+                            router.push({
+                                pathname: '/order-confirmation' as any,
+                                params,
+                            });
+                        }, 150);
+                        return;
+                    } else if (rawUrl.includes('checkout/cancel')) {
+                        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                        Alert.alert('Payment Cancelled', 'Your payment was not processed. No charges were made.');
+                    } else if (rawUrl.includes('checkout/error')) {
+                        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                        Alert.alert('Payment Error', 'Something went wrong. Please try again.');
+                    } else {
+                        // Unknown redirect — log and show alert for debugging
+                        console.warn('[CheckoutModal] Unknown redirect URL:', rawUrl);
+                        Alert.alert('Redirect error', `Unexpected URL: ${rawUrl}`);
+                    }
+                }
+                // User dismissed the browser manually or result.type === 'cancel'
+                setPlacing(false);
+                return;
+            }
+
+            // ── Cash Payment Flow (existing) ──
             let orderId: string;
 
             if (existingOrderId) {
-                // ── Adding to an existing order (seated add-on) ──
                 orderId = existingOrderId;
                 const newItems = cartItems.map((i) => ({
                     order_id: Number(existingOrderId),
@@ -192,7 +340,6 @@ export function CheckoutModal({
                 const { error: itemsErr } = await supabase.from("order_items").insert(newItems);
                 if (itemsErr) throw itemsErr;
 
-                // Recalculate subtotal
                 const { data: allItems } = await supabase
                     .from("order_items")
                     .select("price, quantity")
@@ -207,7 +354,6 @@ export function CheckoutModal({
                     .eq("id", Number(existingOrderId));
                 if (updErr) throw updErr;
             } else {
-                // ── Brand new order ──
                 const { data: orderData, error: orderErr } = await supabase
                     .from("orders")
                     .insert({
@@ -236,7 +382,6 @@ export function CheckoutModal({
                 if (orderErr) throw orderErr;
                 orderId = orderData.id.toString();
 
-                // Insert line items
                 const items = cartItems.map((i) => ({
                     order_id: orderData.id,
                     menu_item_id: Number(i.id),
@@ -537,10 +682,60 @@ export function CheckoutModal({
                                     <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 14 }}>Subtotal</Text>
                                     <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: "#f5f5f5", fontSize: 16 }}>${subtotal.toFixed(2)}</Text>
                                 </View>
-                                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                                    <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#999", fontSize: 14 }}>Payment</Text>
-                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                                        <Text style={{ fontFamily: "Manrope_700Bold", color: "#22C55E", fontSize: 14 }}>Cash ✓</Text>
+                                <View style={{ marginTop: 4 }}>
+                                    <Text style={{ ...S.label, marginBottom: 8 }}>Payment Method</Text>
+                                    <View style={{ flexDirection: "row", gap: 8 }}>
+                                        <Pressable
+                                            onPress={() => {
+                                                if (Platform.OS !== "web") Haptics.selectionAsync();
+                                                setPaymentMethod('cash');
+                                            }}
+                                            style={{
+                                                flex: 1,
+                                                flexDirection: "row",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                gap: 8,
+                                                paddingVertical: 12,
+                                                borderRadius: 12,
+                                                borderWidth: 1.5,
+                                                backgroundColor: paymentMethod === 'cash' ? 'rgba(34,197,94,0.12)' : '#0f0f0f',
+                                                borderColor: paymentMethod === 'cash' ? '#22C55E' : '#2a2a2a',
+                                            }}
+                                        >
+                                            <Wallet size={16} color={paymentMethod === 'cash' ? '#22C55E' : '#666'} />
+                                            <Text style={{ fontFamily: paymentMethod === 'cash' ? 'Manrope_700Bold' : 'Manrope_500Medium', color: paymentMethod === 'cash' ? '#22C55E' : '#777', fontSize: 14 }}>
+                                                Cash
+                                            </Text>
+                                        </Pressable>
+                                        <Pressable
+                                            onPress={() => {
+                                                if (!hasStripe) {
+                                                    Alert.alert('Card Not Available', 'This restaurant does not accept card payments yet.');
+                                                    return;
+                                                }
+                                                if (Platform.OS !== "web") Haptics.selectionAsync();
+                                                setPaymentMethod('card');
+                                            }}
+                                            style={{
+                                                flex: 1,
+                                                flexDirection: "row",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                gap: 8,
+                                                paddingVertical: 12,
+                                                borderRadius: 12,
+                                                borderWidth: 1.5,
+                                                backgroundColor: paymentMethod === 'card' ? 'rgba(129,140,248,0.12)' : '#0f0f0f',
+                                                borderColor: paymentMethod === 'card' ? '#818CF8' : '#2a2a2a',
+                                                opacity: hasStripe ? 1 : 0.5,
+                                            }}
+                                        >
+                                            <CreditCard size={16} color={paymentMethod === 'card' ? '#818CF8' : '#666'} />
+                                            <Text style={{ fontFamily: paymentMethod === 'card' ? 'Manrope_700Bold' : 'Manrope_500Medium', color: paymentMethod === 'card' ? '#818CF8' : '#777', fontSize: 14 }}>
+                                                Card
+                                            </Text>
+                                        </Pressable>
                                     </View>
                                 </View>
                             </Animated.View>
@@ -569,19 +764,23 @@ export function CheckoutModal({
                                     <ActivityIndicator color="#0f0f0f" />
                                 ) : (
                                     <>
-                                        {orderType === "takeout"
-                                            ? <Truck size={18} color="#0f0f0f" />
-                                            : orderType === "pre_order"
-                                                ? <Clock size={18} color="#0f0f0f" />
-                                                : <ShoppingBag size={18} color="#0f0f0f" />}
+                                        {paymentMethod === 'card'
+                                            ? <CreditCard size={18} color="#0f0f0f" />
+                                            : orderType === "takeout"
+                                                ? <Truck size={18} color="#0f0f0f" />
+                                                : orderType === "pre_order"
+                                                    ? <Clock size={18} color="#0f0f0f" />
+                                                    : <ShoppingBag size={18} color="#0f0f0f" />}
                                         <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#0f0f0f", fontSize: 17 }}>
                                             {existingOrderId
                                                 ? `Add Items · $${subtotal.toFixed(2)}`
-                                                : orderType === "takeout"
-                                                    ? `Place Takeout · $${subtotal.toFixed(2)}`
-                                                    : orderType === "pre_order"
-                                                        ? `Pre-Order · $${subtotal.toFixed(2)}`
-                                                        : `Place Order · $${subtotal.toFixed(2)}`}
+                                                : paymentMethod === 'card'
+                                                    ? `Pay with Card · $${subtotal.toFixed(2)}`
+                                                    : orderType === "takeout"
+                                                        ? `Place Takeout · $${subtotal.toFixed(2)}`
+                                                        : orderType === "pre_order"
+                                                            ? `Pre-Order · $${subtotal.toFixed(2)}`
+                                                            : `Place Order · $${subtotal.toFixed(2)}`}
                                         </Text>
                                     </>
                                 )}

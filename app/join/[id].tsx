@@ -17,6 +17,7 @@ import {
     Star, Clock, Leaf, Flame, ChevronDown, ChevronUp,
     CheckCircle2, Users, DollarSign, Trash2, Send,
     Crown, Search, Filter, CreditCard, Share2,
+    Truck, UtensilsCrossed, Wallet,
 } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn, FadeInUp } from 'react-native-reanimated';
 
@@ -103,6 +104,12 @@ export default function JoinPartyScreen() {
     const [itemQuantities, setItemQuantities] = useState<Record<string, number>>({});
     const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
 
+    // ── Group Order Type & Payment Mode ──
+    const [groupOrderType, setGroupOrderType] = useState<'dine_in' | 'takeout'>('dine_in');
+    const [groupPartySize, setGroupPartySize] = useState(2);
+    const [paymentMode, setPaymentMode] = useState<'host_pays' | 'split' | 'assign'>('host_pays');
+    const [assignedPayer, setAssignedPayer] = useState<string | null>(null);
+
     const channelRef = useRef<any>(null);
     const fetchCartRef = useRef<() => Promise<void>>(async () => { });
     const sessionId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '';
@@ -123,6 +130,8 @@ export default function JoinPartyScreen() {
         cartItems.forEach(item => { if (item.added_by_name) names.add(item.added_by_name); });
         return Array.from(names);
     }, [cartItems]);
+
+    const splitAmount = uniqueMembers.length > 0 ? totalPrice / uniqueMembers.length : totalPrice;
 
     // Avatar map: name → url (only populated for current user right now)
     const memberAvatarMap = useMemo<Record<string, string | null>>(() => {
@@ -493,6 +502,29 @@ export default function JoinPartyScreen() {
         });
 
         AsyncStorage.removeItem(activeOrderKey);
+
+        // If dine-in group order, add to waitlist automatically
+        if (groupOrderType === 'dine_in' && restaurantId) {
+            try {
+                const { data: entry } = await supabase
+                    .from('waitlist_entries')
+                    .insert({
+                        restaurant_id: restaurantId,
+                        party_name: guestName || 'Group Order',
+                        party_size: groupPartySize || uniqueMembers.length || 2,
+                        status: 'waiting',
+                        user_id: userId || null,
+                    })
+                    .select('id')
+                    .single();
+
+                if (entry) {
+                    router.push(`/waitlist/${restaurantId}?entry_id=${entry.id}&party_size=${groupPartySize}` as any);
+                }
+            } catch (e) {
+                console.error('Waitlist auto-add error:', e);
+            }
+        }
     };
 
     // ── Main Pay / Submit handler ────────────────────────────────────────
@@ -546,7 +578,7 @@ export default function JoinPartyScreen() {
                                             restaurant_name: restaurantName,
                                             customer_name: guestName,
                                             user_id: userId,
-                                            order_type: 'dine_in',
+                                            order_type: groupOrderType,
                                         },
                                     }
                                 );
@@ -556,20 +588,58 @@ export default function JoinPartyScreen() {
                                 const checkoutUrl: string = fnData?.url;
                                 if (!checkoutUrl) throw new Error('No checkout URL returned.');
 
-                                // 3. Open Stripe Checkout in the in-app browser
-                                //    After payment, Stripe redirects to our payment-redirect
-                                //    edge function, which saves the order and redirects
-                                //    back into the app via deep link.
-                                await WebBrowser.openBrowserAsync(checkoutUrl, {
-                                    dismissButtonStyle: 'cancel',
-                                    presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
-                                });
+                                // Use openAuthSessionAsync so the browser auto-closes
+                                // when payment-redirect fires the rasvia:// deep link.
+                                const result = await WebBrowser.openAuthSessionAsync(
+                                    checkoutUrl,
+                                    'rasvia://'
+                                );
 
-                                // 4. After browser is dismissed (user may have been redirected
-                                //    via deep link, or manually closed the browser).
-                                //    Check if the order was already saved by the redirect page.
-                                if (!submitted) {
-                                    // Check server-side if the party session was submitted
+                                if (result.type === 'success' && result.url) {
+                                    const rawUrl = result.url;
+                                    const qIndex = rawUrl.indexOf('?');
+                                    const qString = qIndex >= 0 ? rawUrl.slice(qIndex + 1) : '';
+                                    const sp = new URLSearchParams(qString);
+                                    const params = {
+                                        order_id: sp.get('order_id') || '',
+                                        restaurant_name: sp.get('restaurant_name') || restaurantName,
+                                        order_type: sp.get('order_type') || groupOrderType,
+                                        total: sp.get('total') || totalPrice.toFixed(2),
+                                        party_session_id: sessionId,
+                                    };
+
+                                    if (rawUrl.includes('order-confirmation')) {
+                                        setSubmitted(true);
+                                        setShowCartModal(false);
+                                        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                        addEvent({
+                                            type: 'group_submitted',
+                                            restaurantName,
+                                            restaurantId: String(sessionId),
+                                            entryId: String(sessionId),
+                                            partySize: cartItems.length,
+                                            timestamp: new Date().toISOString(),
+                                        });
+                                        AsyncStorage.removeItem(activeOrderKey);
+                                        setTimeout(() => {
+                                            router.push({
+                                                pathname: '/order-confirmation' as any,
+                                                params,
+                                            });
+                                        }, 150);
+                                    } else if (rawUrl.includes('checkout/cancel')) {
+                                        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                                        Alert.alert('Payment Cancelled', 'Your payment was not processed.');
+                                    } else if (rawUrl.includes('checkout/error')) {
+                                        const reason = sp.get('reason') || 'unknown';
+                                        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                                        Alert.alert('Payment Error', `Something went wrong. ${reason}`);
+                                    } else {
+                                        console.warn('[JoinOrder] Unknown redirect URL:', rawUrl);
+                                        Alert.alert('Redirect info', `URL: ${rawUrl}`);
+                                    }
+                                } else if (!submitted) {
+                                    // Browser dismissed manually — check server status
                                     const { data: sessCheck } = await supabase
                                         .from('party_sessions')
                                         .select('status')
@@ -592,7 +662,7 @@ export default function JoinPartyScreen() {
                                     }
                                 }
                             } else {
-                                // 2b. No Stripe account → submit directly to kitchen
+                                // 2b. No Stripe account → submit directly to kitchen (cash)
                                 await finaliseSubmit();
                             }
                         } catch (e: any) {
@@ -1087,6 +1157,53 @@ export default function JoinPartyScreen() {
                         </Pressable>
                     </View>
 
+                    {/* ── Order Type Toggle (host only) ── */}
+                    {isHost && (
+                        <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
+                            <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#999', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Order Type</Text>
+                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
+                                <Pressable
+                                    onPress={() => { if (Platform.OS !== 'web') Haptics.selectionAsync(); setGroupOrderType('dine_in'); }}
+                                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, backgroundColor: groupOrderType === 'dine_in' ? 'rgba(255,153,51,0.12)' : '#1a1a1a', borderColor: groupOrderType === 'dine_in' ? '#FF9933' : '#2a2a2a' }}
+                                >
+                                    <UtensilsCrossed size={16} color={groupOrderType === 'dine_in' ? '#FF9933' : '#666'} />
+                                    <Text style={{ fontFamily: groupOrderType === 'dine_in' ? 'Manrope_700Bold' : 'Manrope_500Medium', color: groupOrderType === 'dine_in' ? '#FF9933' : '#777', fontSize: 14 }}>Dine In</Text>
+                                </Pressable>
+                                <Pressable
+                                    onPress={() => { if (Platform.OS !== 'web') Haptics.selectionAsync(); setGroupOrderType('takeout'); }}
+                                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, backgroundColor: groupOrderType === 'takeout' ? 'rgba(20,184,166,0.12)' : '#1a1a1a', borderColor: groupOrderType === 'takeout' ? '#14B8A6' : '#2a2a2a' }}
+                                >
+                                    <Truck size={16} color={groupOrderType === 'takeout' ? '#14B8A6' : '#666'} />
+                                    <Text style={{ fontFamily: groupOrderType === 'takeout' ? 'Manrope_700Bold' : 'Manrope_500Medium', color: groupOrderType === 'takeout' ? '#14B8A6' : '#777', fontSize: 14 }}>Takeout</Text>
+                                </Pressable>
+                            </View>
+                            {/* Party size for dine-in */}
+                            {groupOrderType === 'dine_in' && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1a1a1a', borderRadius: 12, borderWidth: 1, borderColor: '#2a2a2a', paddingHorizontal: 14, paddingVertical: 10, marginTop: 8 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <Users size={14} color="#FF9933" />
+                                        <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#ccc', fontSize: 13 }}>Party Size</Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <Pressable
+                                            onPress={() => { if (groupPartySize > 1) { setGroupPartySize(p => p - 1); if (Platform.OS !== 'web') Haptics.selectionAsync(); } }}
+                                            style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: '#262626', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#333' }}
+                                        >
+                                            <Minus size={14} color="#f5f5f5" />
+                                        </Pressable>
+                                        <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 18, minWidth: 24, textAlign: 'center' }}>{groupPartySize}</Text>
+                                        <Pressable
+                                            onPress={() => { setGroupPartySize(p => p + 1); if (Platform.OS !== 'web') Haptics.selectionAsync(); }}
+                                            style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: '#262626', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#333' }}
+                                        >
+                                            <Plus size={14} color="#f5f5f5" />
+                                        </Pressable>
+                                    </View>
+                                </View>
+                            )}
+                        </View>
+                    )}
+
                     {/* View Toggle */}
                     <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 8 }}>
                         <Pressable
@@ -1223,7 +1340,7 @@ export default function JoinPartyScreen() {
                     )}
 
                     {/* Footer */}
-                    <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: '#1e1e1e', paddingBottom: Platform.OS === 'ios' ? 40 : 20 }}>
+                    <ScrollView style={{ maxHeight: Platform.OS === 'ios' ? 420 : 380 }} contentContainerStyle={{ padding: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 20 }}>
                         {/* Per-member summary */}
                         {uniqueMembers.length > 1 && (
                             <View style={{ marginBottom: 12 }}>
@@ -1249,11 +1366,91 @@ export default function JoinPartyScreen() {
                             <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#f5f5f5', fontSize: 20 }}>${totalPrice.toFixed(2)}</Text>
                         </View>
 
+                        {/* ── Payment Mode Selector (host only) ── */}
+                        {isHost && cartItems.length > 0 && (
+                            <View style={{ marginBottom: 16 }}>
+                                <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#999', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Payment</Text>
+                                <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
+                                    {/* I'll Pay */}
+                                    <Pressable
+                                        onPress={() => { if (Platform.OS !== 'web') Haptics.selectionAsync(); setPaymentMode('host_pays'); setAssignedPayer(null); }}
+                                        style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', backgroundColor: paymentMode === 'host_pays' ? 'rgba(34,197,94,0.12)' : '#1a1a1a', borderColor: paymentMode === 'host_pays' ? '#22C55E' : '#2a2a2a' }}
+                                    >
+                                        <Wallet size={16} color={paymentMode === 'host_pays' ? '#22C55E' : '#666'} style={{ marginBottom: 4 }} />
+                                        <Text style={{ fontFamily: paymentMode === 'host_pays' ? 'Manrope_700Bold' : 'Manrope_500Medium', color: paymentMode === 'host_pays' ? '#22C55E' : '#777', fontSize: 12, textAlign: 'center' }}>I'll Pay</Text>
+                                    </Pressable>
+                                    {/* Split Equally */}
+                                    <Pressable
+                                        onPress={() => { if (Platform.OS !== 'web') Haptics.selectionAsync(); setPaymentMode('split'); setAssignedPayer(null); }}
+                                        style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', backgroundColor: paymentMode === 'split' ? 'rgba(129,140,248,0.12)' : '#1a1a1a', borderColor: paymentMode === 'split' ? '#818CF8' : '#2a2a2a' }}
+                                    >
+                                        <Users size={16} color={paymentMode === 'split' ? '#818CF8' : '#666'} style={{ marginBottom: 4 }} />
+                                        <Text style={{ fontFamily: paymentMode === 'split' ? 'Manrope_700Bold' : 'Manrope_500Medium', color: paymentMode === 'split' ? '#818CF8' : '#777', fontSize: 12, textAlign: 'center' }}>Split</Text>
+                                    </Pressable>
+                                    {/* Assign Payer */}
+                                    <Pressable
+                                        onPress={() => { if (Platform.OS !== 'web') Haptics.selectionAsync(); setPaymentMode('assign'); }}
+                                        style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', backgroundColor: paymentMode === 'assign' ? 'rgba(249,115,22,0.12)' : '#1a1a1a', borderColor: paymentMode === 'assign' ? '#F97316' : '#2a2a2a' }}
+                                    >
+                                        <Crown size={16} color={paymentMode === 'assign' ? '#F97316' : '#666'} style={{ marginBottom: 4 }} />
+                                        <Text style={{ fontFamily: paymentMode === 'assign' ? 'Manrope_700Bold' : 'Manrope_500Medium', color: paymentMode === 'assign' ? '#F97316' : '#777', fontSize: 12, textAlign: 'center' }}>Assign</Text>
+                                    </Pressable>
+                                </View>
+
+                                {/* Split breakdown */}
+                                {paymentMode === 'split' && uniqueMembers.length > 1 && (
+                                    <View style={{ backgroundColor: 'rgba(129,140,248,0.08)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(129,140,248,0.2)', padding: 12, marginBottom: 4 }}>
+                                        <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#818CF8', fontSize: 12, marginBottom: 8 }}>Each member pays:</Text>
+                                        {uniqueMembers.map(name => {
+                                            const color = getMemberColor(name, uniqueMembers);
+                                            const memberShare = memberTotals[name]?.total ?? 0;
+                                            return (
+                                                <View key={name} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 }}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                        <MemberAvatar name={name} color={color} size={20} avatarUrl={memberAvatarMap[name]} />
+                                                        <Text style={{ fontFamily: 'Manrope_500Medium', color: '#ccc', fontSize: 13 }}>{name}</Text>
+                                                    </View>
+                                                    <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#818CF8', fontSize: 14 }}>${memberShare.toFixed(2)}</Text>
+                                                </View>
+                                            );
+                                        })}
+                                    </View>
+                                )}
+
+                                {/* Assign payer selector */}
+                                {paymentMode === 'assign' && (
+                                    <View style={{ backgroundColor: 'rgba(249,115,22,0.08)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(249,115,22,0.2)', padding: 12, marginBottom: 4 }}>
+                                        <Text style={{ fontFamily: 'Manrope_600SemiBold', color: '#F97316', fontSize: 12, marginBottom: 8 }}>Who pays the full bill?</Text>
+                                        {uniqueMembers.map(name => {
+                                            const color = getMemberColor(name, uniqueMembers);
+                                            const isSelected = assignedPayer === name;
+                                            return (
+                                                <Pressable
+                                                    key={name}
+                                                    onPress={() => { if (Platform.OS !== 'web') Haptics.selectionAsync(); setAssignedPayer(name); }}
+                                                    style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 8, borderRadius: 10, backgroundColor: isSelected ? 'rgba(249,115,22,0.15)' : 'transparent', marginBottom: 4 }}
+                                                >
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                                        <MemberAvatar name={name} color={color} size={24} avatarUrl={memberAvatarMap[name]} />
+                                                        <Text style={{ fontFamily: isSelected ? 'Manrope_700Bold' : 'Manrope_500Medium', color: isSelected ? '#F97316' : '#ccc', fontSize: 14 }}>{name}</Text>
+                                                        {name === guestName && isHost && <Crown size={11} color="#FF9933" />}
+                                                    </View>
+                                                    <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: isSelected ? '#F97316' : '#444', backgroundColor: isSelected ? '#F97316' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                                                        {isSelected && <CheckCircle2 size={14} color="#fff" />}
+                                                    </View>
+                                                </Pressable>
+                                            );
+                                        })}
+                                    </View>
+                                )}
+                            </View>
+                        )}
+
                         {isHost ? (
                             <Pressable
                                 onPress={handlePayment}
-                                disabled={submitting || cartItems.length === 0}
-                                style={{ backgroundColor: '#22C55E', borderRadius: 16, paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: submitting || cartItems.length === 0 ? 0.6 : 1 }}
+                                disabled={submitting || cartItems.length === 0 || (paymentMode === 'assign' && !assignedPayer)}
+                                style={{ backgroundColor: (cartItems.length === 0 || (paymentMode === 'assign' && !assignedPayer)) ? '#333' : '#22C55E', borderRadius: 16, paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: submitting ? 0.6 : 1 }}
                             >
                                 {submitting ? (
                                     <ActivityIndicator color="#fff" />
@@ -1261,7 +1458,11 @@ export default function JoinPartyScreen() {
                                     <>
                                         <CreditCard size={18} color="#fff" />
                                         <Text style={{ fontFamily: 'BricolageGrotesque_700Bold', color: '#fff', fontSize: 17 }}>
-                                            Pay & Submit Order
+                                            {paymentMode === 'split'
+                                                ? `Split & Submit · $${totalPrice.toFixed(2)}`
+                                                : paymentMode === 'assign' && assignedPayer
+                                                    ? `${assignedPayer} Pays · $${totalPrice.toFixed(2)}`
+                                                    : `Pay & Submit · $${totalPrice.toFixed(2)}`}
                                         </Text>
                                     </>
                                 )}
@@ -1279,7 +1480,7 @@ export default function JoinPartyScreen() {
                                 </Text>
                             </View>
                         )}
-                    </View>
+                    </ScrollView>
                 </View>
             </Modal>
         </View>
