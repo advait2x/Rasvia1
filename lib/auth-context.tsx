@@ -60,10 +60,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } = supabase.auth.onAuthStateChange(async (_event, session) => {
             setSession(session);
             if (session?.user?.id) {
-                // Don't block the UI — just update onboarding in the background
-                checkOnboardingStatus(session.user.id);
+                // Keep loading=true until we know if onboarding is needed.
+                // This prevents a flash of the home screen for new users.
+                setLoading(true);
+                // Small delay so the profile upsert (from auth.tsx signUp) can
+                // complete before we read onboarding_completed.
+                await new Promise(r => setTimeout(r, 800));
+                await checkOnboardingStatus(session.user.id);
+                setLoading(false);
             } else {
                 setNeedsOnboarding(false);
+                setLoading(false);
             }
         });
 

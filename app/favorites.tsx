@@ -40,9 +40,15 @@ export default function FavoritesScreen() {
         .from("profiles")
         .select("favorite_restaurants")
         .eq("id", session.user.id)
-        .single();
+        .maybeSingle();
 
       if (profileError) throw profileError;
+      if (!profileData) {
+        setFavorites([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
 
       const favoriteIds = parseFavorites(profileData?.favorite_restaurants);
 
@@ -187,89 +193,89 @@ export default function FavoritesScreen() {
                 const waitTimeStr = isClosed
                   ? "Closed"
                   : noWait
-                  ? "No wait"
-                  : `${wt || 0} min wait`;
+                    ? "No wait"
+                    : `${wt || 0} min wait`;
                 const waitColor = isClosed
                   ? "#888888"
                   : noWait
-                  ? "#10B981"
-                  : wt < 15
-                  ? "#10B981"
-                  : wt < 45
-                  ? "#F59E0B"
-                  : "#EF4444";
+                    ? "#10B981"
+                    : wt < 15
+                      ? "#10B981"
+                      : wt < 45
+                        ? "#F59E0B"
+                        : "#EF4444";
 
                 return (
-                <Animated.View
-                  key={restaurant.id}
-                  entering={FadeInDown.delay(100 + index * 50).duration(500)}
-                >
-                  <Pressable
-                    onPress={() => handleRestaurantPress(restaurant.id)}
-                    style={{
-                      flexDirection: "row",
-                      backgroundColor: "#1a1a1a",
-                      borderRadius: 16,
-                      borderWidth: 1,
-                      borderColor: "#2a2a2a",
-                      padding: 12,
-                      marginBottom: 16,
-                      alignItems: "center",
-                    }}
+                  <Animated.View
+                    key={restaurant.id}
+                    entering={FadeInDown.delay(100 + index * 50).duration(500)}
                   >
-                    <Image
-                      source={{
-                        uri: restaurant.image_url || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4",
-                      }}
+                    <Pressable
+                      onPress={() => handleRestaurantPress(restaurant.id)}
                       style={{
-                        width: 80,
-                        height: 80,
-                        borderRadius: 12,
-                        backgroundColor: "#262626",
+                        flexDirection: "row",
+                        backgroundColor: "#1a1a1a",
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: "#2a2a2a",
+                        padding: 12,
+                        marginBottom: 16,
+                        alignItems: "center",
                       }}
-                    />
-                    <View style={{ flex: 1, marginLeft: 16 }}>
-                      <Text
-                        style={{
-                          fontFamily: "BricolageGrotesque_700Bold",
-                          color: "#f5f5f5",
-                          fontSize: 16,
-                          marginBottom: 4,
+                    >
+                      <Image
+                        source={{
+                          uri: restaurant.image_url || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4",
                         }}
-                        numberOfLines={1}
-                      >
-                        {restaurant.name}
-                      </Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
-                        <MapPin size={12} color="#999" />
+                        style={{
+                          width: 80,
+                          height: 80,
+                          borderRadius: 12,
+                          backgroundColor: "#262626",
+                        }}
+                      />
+                      <View style={{ flex: 1, marginLeft: 16 }}>
                         <Text
                           style={{
-                            fontFamily: "Manrope_500Medium",
-                            color: "#999",
-                            fontSize: 12,
-                            marginLeft: 4,
+                            fontFamily: "BricolageGrotesque_700Bold",
+                            color: "#f5f5f5",
+                            fontSize: 16,
+                            marginBottom: 4,
                           }}
                           numberOfLines={1}
                         >
-                          {restaurant.address}
+                          {restaurant.name}
                         </Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                          <MapPin size={12} color="#999" />
+                          <Text
+                            style={{
+                              fontFamily: "Manrope_500Medium",
+                              color: "#999",
+                              fontSize: 12,
+                              marginLeft: 4,
+                            }}
+                            numberOfLines={1}
+                          >
+                            {restaurant.address}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                          <Clock size={12} color={waitColor} />
+                          <Text
+                            style={{
+                              fontFamily: "Manrope_600SemiBold",
+                              color: waitColor,
+                              fontSize: 12,
+                              marginLeft: 4,
+                            }}
+                          >
+                            {waitTimeStr}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Clock size={12} color={waitColor} />
-                        <Text
-                          style={{
-                            fontFamily: "Manrope_600SemiBold",
-                            color: waitColor,
-                            fontSize: 12,
-                            marginLeft: 4,
-                          }}
-                        >
-                          {waitTimeStr}
-                        </Text>
-                      </View>
-                    </View>
-                  </Pressable>
-                </Animated.View>
+                    </Pressable>
+                  </Animated.View>
                 );
               })
             )}

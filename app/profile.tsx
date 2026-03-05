@@ -26,7 +26,6 @@ import {
   ChevronRight,
   ChevronDown,
   ShoppingBag,
-  CreditCard,
   Bell,
   ArrowLeft,
   Leaf,
@@ -359,17 +358,17 @@ export default function ProfileSettingsScreen() {
         updated_at: new Date().toISOString(),
       };
 
-      // Name
-      const newFullName = `${tempFirstName.trim()} ${tempLastInitial.trim().toUpperCase()}.`;
-      updates.full_name = newFullName;
-
-      // Phone
-      const cleaned = tempPhone.replace(/\D/g, "").trim();
-      if (!cleaned) {
-        Alert.alert("Error", "Phone number cannot be empty.");
-        return;
+      // Name — only update if first name is filled in
+      if (tempFirstName.trim()) {
+        const newFullName = `${tempFirstName.trim()} ${tempLastInitial.trim().toUpperCase()}.`;
+        updates.full_name = newFullName;
       }
-      updates.phone_number = cleaned;
+
+      // Phone — optional
+      const cleaned = tempPhone.replace(/\D/g, "").trim();
+      if (cleaned) {
+        updates.phone_number = cleaned;
+      }
 
       const { error } = await supabase
         .from("profiles")
@@ -378,8 +377,8 @@ export default function ProfileSettingsScreen() {
 
       if (error) throw error;
 
-      setFullName(newFullName);
-      setPhoneNumber(formatPhoneNumber(cleaned));
+      if (updates.full_name) setFullName(updates.full_name);
+      if (cleaned) setPhoneNumber(formatPhoneNumber(cleaned));
       setEditingProfile(false);
 
       if (Platform.OS !== "web") {
@@ -388,7 +387,8 @@ export default function ProfileSettingsScreen() {
     } catch (err: any) {
       Alert.alert("Error", err.message || "Could not update profile.");
     }
-  }, [session, tempFirstName, tempLastInitial, tempPhone]);
+  }, [session, tempFirstName, tempLastInitial, tempPhone, phoneNumber]);
+
 
   function formatPhoneNumber(raw: string): string {
     const digits = raw.replace(/\D/g, "").slice(0, 10);
@@ -1390,15 +1390,6 @@ export default function ProfileSettingsScreen() {
                 </>
               )}
               <Divider />
-              <SettingsRow
-                icon={<CreditCard size={20} color="#FF9933" />}
-                label="Payment Methods"
-                hasChevron
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                }}
-              />
-              <Divider />
               <View
                 style={{
                   flexDirection: "row",
@@ -1725,15 +1716,6 @@ export default function ProfileSettingsScreen() {
                 onPress={() => {
                   if (Platform.OS !== "web") Haptics.selectionAsync();
                   router.push("/my-orders" as any);
-                }}
-              />
-              <Divider />
-              <SettingsRow
-                icon={<CreditCard size={20} color="#FF9933" />}
-                label="Payment Methods"
-                hasChevron
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
                 }}
               />
               <Divider />

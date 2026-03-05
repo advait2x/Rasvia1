@@ -51,7 +51,7 @@ import {
 
 // ──────────────────────────── Helpers ──────────────────────────────
 const STATUS_COLORS: Record<OrderStatus, string> = {
-    active: "#FF9933",
+    pending: "#FF9933",
     preparing: "#F59E0B",
     ready: "#22C55E",
     served: "#818CF8",
@@ -263,13 +263,13 @@ function OrderCard({
     const statusColor = STATUS_COLORS[order.status];
 
     const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
-        active: "preparing",
+        pending: "preparing",
         preparing: order.orderType === "takeout" ? "ready" : "served",
         ready: "completed",
         served: "completed",
     };
     const NEXT_LABEL: Partial<Record<OrderStatus, string>> = {
-        active: "Mark Preparing",
+        pending: "Mark Preparing",
         preparing: order.orderType === "takeout" ? "Mark Ready for Pickup" : "Mark Served",
         ready: "Mark Completed",
         served: "Mark Completed",
@@ -394,7 +394,7 @@ function OrderCard({
                                     <Text style={{ fontFamily: "Manrope_700Bold", color: "#FF9933", fontSize: 14 }}>{nextLabel}</Text>
                                 </Pressable>
                             )}
-                            {order.status === "served" || order.status === "active" || order.status === "preparing" ? (
+                            {order.status === "served" || order.status === "pending" || order.status === "preparing" ? (
                                 <Pressable
                                     onPress={() => { if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onClose(order); }}
                                     style={{ backgroundColor: "rgba(34,197,94,0.1)", borderRadius: 12, padding: 12, alignItems: "center", borderWidth: 1, borderColor: "rgba(34,197,94,0.3)" }}
@@ -411,7 +411,7 @@ function OrderCard({
 }
 
 // ──────────────────────── Main Screen ──────────────────────────
-type TabKey = "active" | "pre_order" | "takeout" | "completed";
+type TabKey = "dine_in" | "pre_order" | "takeout" | "completed";
 type DietFilter = "all" | "veg" | "non_veg";
 type MealFilter = "all" | MealPeriod;
 
@@ -425,7 +425,7 @@ export default function AdminOrdersScreen() {
     const [refreshing, setRefreshing] = useState(false);
 
     // Tabs
-    const [activeTab, setActiveTab] = useState<TabKey>("active");
+    const [activeTab, setActiveTab] = useState<TabKey>("dine_in");
 
     // Filters
     const [dietFilter, setDietFilter] = useState<DietFilter>("all");
@@ -499,7 +499,7 @@ export default function AdminOrdersScreen() {
     // ── Filter logic ──
     const filteredOrders = orders.filter((o) => {
         // Tab filter
-        if (activeTab === "active") { if (o.orderType === "pre_order" || o.orderType === "takeout" || o.status === "completed" || o.status === "cancelled") return false; }
+        if (activeTab === "dine_in") { if (o.orderType === "pre_order" || o.orderType === "takeout" || o.status === "completed" || o.status === "cancelled") return false; }
         if (activeTab === "pre_order") { if (o.orderType !== "pre_order") return false; }
         if (activeTab === "takeout") { if (o.orderType !== "takeout") return false; }
         if (activeTab === "completed") { if (o.status !== "completed" && o.status !== "cancelled") return false; }
@@ -518,7 +518,7 @@ export default function AdminOrdersScreen() {
     });
 
     const TABS: { key: TabKey; label: string }[] = [
-        { key: "active", label: "Dine In" },
+        { key: "dine_in", label: "Dine In" },
         { key: "pre_order", label: "Pre-Orders" },
         { key: "takeout", label: "Takeout" },
         { key: "completed", label: "Completed" },
@@ -556,7 +556,7 @@ export default function AdminOrdersScreen() {
             <View style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#1e1e1e", paddingHorizontal: 12, paddingVertical: 6, gap: 6, alignItems: "center" }}>
                 {TABS.map(({ key, label }) => {
                     const active = activeTab === key;
-                    const count = key === "active"
+                    const count = key === "dine_in"
                         ? orders.filter(o => o.orderType === "dine_in" && o.status !== "completed" && o.status !== "cancelled").length
                         : key === "pre_order"
                             ? orders.filter(o => o.orderType === "pre_order").length
@@ -656,7 +656,7 @@ export default function AdminOrdersScreen() {
                             <ShoppingBag size={40} color="#333" style={{ marginBottom: 12 }} />
                             <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#555", fontSize: 18 }}>No orders here</Text>
                             <Text style={{ fontFamily: "Manrope_500Medium", color: "#444", fontSize: 14, marginTop: 4 }}>
-                                {activeTab === "active" ? "No active dine-in orders" : activeTab === "pre_order" ? "No pre-orders" : activeTab === "takeout" ? "No takeout orders" : "No completed orders"}
+                                {activeTab === "dine_in" ? "No active dine-in orders" : activeTab === "pre_order" ? "No pre-orders" : activeTab === "takeout" ? "No takeout orders" : "No completed orders"}
                             </Text>
                         </Animated.View>
                     ) : (

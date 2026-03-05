@@ -47,7 +47,7 @@ serve(async (req: Request) => {
       const orderType = meta.order_type || 'dine_in'
 
       let cartItems: any[] = []
-      try { cartItems = JSON.parse(meta.cart_items || '[]') } catch {}
+      try { cartItems = JSON.parse(meta.cart_items || '[]') } catch { }
 
       const subtotal = cartItems.reduce(
         (sum: number, i: any) => sum + (Number(i.price) * (i.quantity ?? 1)), 0
@@ -69,7 +69,7 @@ serve(async (req: Request) => {
             table_number: null,
             party_size: 1,
             order_type: orderType,
-            status: orderType === 'takeout' ? 'preparing' : 'active',
+            status: orderType === 'takeout' ? 'preparing' : 'pending',
             meal_period: 'dinner',
             subtotal,
             tip_amount: 0,

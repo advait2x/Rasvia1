@@ -58,7 +58,8 @@ function getWaitColor(mins: number) {
 
 function statusColor(status: string) {
     switch (status) {
-        case "active": return "#FF9933";
+        case "pending":
+        case "active": return "#FF9933";  // 'active' kept as fallback for legacy data
         case "preparing": return "#F59E0B";
         case "ready": return "#22C55E";
         case "served":

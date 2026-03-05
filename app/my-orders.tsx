@@ -49,7 +49,7 @@ import {
 // ────────────────────────────────── Constants ──────────────────────────────────
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
-  active: "#FF9933",
+  pending: "#FF9933",
   preparing: "#F59E0B",
   ready: "#22C55E",
   served: "#818CF8",
@@ -81,7 +81,7 @@ const TRACKING_STEPS: {
 /** Map the database status to our simplified tracking step index */
 function statusToStepIndex(status: OrderStatus): number {
   switch (status) {
-    case "active":
+    case "pending":
       return 0; // received
     case "preparing":
       return 1;
@@ -318,7 +318,7 @@ function getStatusMessage(
   orderType: OrderType
 ): { title: string; subtitle: string } {
   switch (status) {
-    case "active":
+    case "pending":
       return {
         title: "Order Received!",
         subtitle: "The restaurant has received your order and will start preparing it shortly.",

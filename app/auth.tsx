@@ -82,10 +82,6 @@ export default function AuthScreen() {
                 setNotification({ visible: true, message: "Please enter your first name and last initial.", type: "error" });
                 return;
             }
-            if (!phone.trim()) {
-                setNotification({ visible: true, message: "Please enter your phone number.", type: "error" });
-                return;
-            }
         }
 
         setLoading(true);
@@ -312,7 +308,7 @@ export default function AuthScreen() {
                                         }}
                                     >
                                         <TextInput
-                                             style={{
+                                            style={{
                                                 flex: 1,
                                                 color: "#f5f5f5",
                                                 fontFamily: "Manrope_500Medium",

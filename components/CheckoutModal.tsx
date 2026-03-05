@@ -364,9 +364,7 @@ export function CheckoutModal({
                         status:
                             orderType === "takeout"
                                 ? "preparing"
-                                : orderType === "pre_order"
-                                    ? "active"
-                                    : "active",
+                                : "pending",
                         meal_period: mealPeriod,
                         subtotal,
                         tip_amount: 0,
