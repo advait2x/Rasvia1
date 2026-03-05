@@ -361,6 +361,7 @@ export default function WaitlistStatus() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showPreOrderCheckout, setShowPreOrderCheckout] = useState(false);
   const [pushActive, setPushActive] = useState(true);
+  const [hasPlacedOrder, setHasPlacedOrder] = useState(false);
 
   // Check push notification status on mount
   useEffect(() => {
@@ -616,21 +617,25 @@ export default function WaitlistStatus() {
           >
             Waitlist Status
           </Text>
-          <Pressable
-            onPress={handleLeaveQueue}
-            style={{
-              backgroundColor: "rgba(239, 68, 68, 0.15)",
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              alignItems: "center",
-              justifyContent: "center",
-              borderWidth: 1,
-              borderColor: "rgba(239, 68, 68, 0.2)",
-            }}
-          >
-            <X size={20} color="#EF4444" />
-          </Pressable>
+          {!hasPlacedOrder ? (
+            <Pressable
+              onPress={handleLeaveQueue}
+              style={{
+                backgroundColor: "rgba(239, 68, 68, 0.15)",
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: "rgba(239, 68, 68, 0.2)",
+              }}
+            >
+              <X size={20} color="#EF4444" />
+            </Pressable>
+          ) : (
+            <View style={{ width: 44 }} />
+          )}
         </Animated.View>
 
         <ScrollView
@@ -1162,6 +1167,7 @@ export default function WaitlistStatus() {
         onOrderPlaced={() => {
           setCartItems([]);
           setShowPreOrderCheckout(false);
+          setHasPlacedOrder(true);
         }}
       />
     </View>

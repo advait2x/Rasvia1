@@ -150,7 +150,7 @@ export default function ProfileSettingsScreen() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   // Admin tab state (only used when isAdmin)
-  const [activeTab, setActiveTab] = useState<'preferences' | 'location' | 'debug'>('preferences');
+  const [activeTab, setActiveTab] = useState<'preferences' | 'location' | 'debug' | 'orders'>('preferences');
 
   // Debug time override state
   const [debugDay, setDebugDay] = useState(0);     // 0=Sun..6=Sat
@@ -781,15 +781,19 @@ export default function ProfileSettingsScreen() {
             borderColor: '#2a2a2a',
             padding: 4,
           }}>
-            {(['preferences', 'location', 'debug'] as const).map((tab) => {
+            {(['preferences', 'location', 'debug', 'orders'] as const).map((tab) => {
               const isActive = activeTab === tab;
-              const label = tab === 'preferences' ? 'Preferences' : tab === 'location' ? 'Location' : 'Debug';
+              const label = tab === 'preferences' ? 'Preferences' : tab === 'location' ? 'Location' : tab === 'debug' ? 'Debug' : 'Orders';
               return (
                 <Pressable
                   key={tab}
                   onPress={() => {
                     if (Platform.OS !== 'web') Haptics.selectionAsync();
-                    setActiveTab(tab);
+                    if (tab === 'orders') {
+                      router.push('/admin-orders' as any);
+                    } else {
+                      setActiveTab(tab);
+                    }
                   }}
                   style={{
                     flex: 1,
@@ -798,16 +802,16 @@ export default function ProfileSettingsScreen() {
                     justifyContent: 'center',
                     borderRadius: 11,
                     backgroundColor: isActive
-                      ? tab === 'debug' ? 'rgba(245,158,11,0.18)' : 'rgba(255,153,51,0.18)'
+                      ? tab === 'debug' ? 'rgba(245,158,11,0.18)' : tab === 'orders' ? 'rgba(34,197,94,0.18)' : 'rgba(255,153,51,0.18)'
                       : 'transparent',
                   }}
                 >
                   <Text style={{
                     fontFamily: isActive ? 'BricolageGrotesque_700Bold' : 'Manrope_600SemiBold',
-                    fontSize: 13,
+                    fontSize: 12,
                     lineHeight: 18,
                     color: isActive
-                      ? tab === 'debug' ? '#F59E0B' : '#FF9933'
+                      ? tab === 'debug' ? '#F59E0B' : tab === 'orders' ? '#22C55E' : '#FF9933'
                       : '#666666',
                   }}>
                     {tab === 'debug' ? '🐞 ' + label : label}
