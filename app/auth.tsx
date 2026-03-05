@@ -100,7 +100,6 @@ export default function AuthScreen() {
                         .upsert({
                             id: data.user.id,
                             full_name: fullName,
-                            email: email.trim(),
                             phone_number: phone.replace(/\D/g, "").trim(),
                             created_at: new Date().toISOString(),
                         });

@@ -161,15 +161,8 @@ export function MenuGridItem({
             >
               {item.description}
             </Text>
-            {/* Category + meal time chips */}
+            {/* Meal time chips only — no category badges */}
             <View className="flex-row flex-wrap mb-1.5" style={{ gap: 3 }}>
-              {item.category && item.category !== "Menu Item" && (
-                <View style={{ backgroundColor: "rgba(255,153,51,0.12)", borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, borderWidth: 0.5, borderColor: "rgba(255,153,51,0.3)" }}>
-                  <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#FF9933", fontSize: 8, textTransform: "capitalize" }}>
-                    {item.category}
-                  </Text>
-                </View>
-              )}
               {item.mealTimes && item.mealTimes.map((mt, i) => {
                 const mealTimeStyles: Record<string, { bg: string; border: string; color: string; label: string }> = {
                   breakfast: { bg: "rgba(249,115,22,0.15)", border: "rgba(249,115,22,0.4)", color: "#F97316", label: "Breakfast" },
@@ -178,7 +171,9 @@ export function MenuGridItem({
                   all_day:   { bg: "rgba(56,189,248,0.15)", border: "rgba(56,189,248,0.4)", color: "#38BDF8", label: "All Day" },
                   specials:  { bg: "rgba(245,158,11,0.15)", border: "rgba(245,158,11,0.4)", color: "#F59E0B", label: "Specials" },
                 };
-                const style = mealTimeStyles[mt] ?? { bg: "rgba(148,163,184,0.15)", border: "rgba(148,163,184,0.3)", color: "#94A3B8", label: mt };
+                const style = mealTimeStyles[mt];
+                // Only show badges for the 5 allowed meal periods; skip anything else
+                if (!style) return null;
                 return (
                   <View key={i} style={{ backgroundColor: style.bg, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, borderWidth: 0.5, borderColor: style.border }}>
                     <Text style={{ fontFamily: "Manrope_600SemiBold", color: style.color, fontSize: 8 }}>

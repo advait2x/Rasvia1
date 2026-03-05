@@ -24,6 +24,7 @@ import { supabase } from "@/lib/supabase";
 import { type UIRestaurant, mapSupabaseToUI, type SupabaseRestaurant, haversineDistance } from "@/lib/restaurant-types";
 import { useLocation } from "@/lib/location-context";
 import { useAdminMode } from "@/hooks/useAdminMode";
+import { useClosedRestaurantIds } from "@/hooks/useClosedRestaurantIds";
 
 const cuisineEmojis: Record<string, string> = {
   "North Indian": "🍛",
@@ -39,6 +40,7 @@ export default function CuisinePage() {
   const router = useRouter();
   const { userCoords } = useLocation();
   const { isAdmin } = useAdminMode();
+  const closedRestaurantIds = useClosedRestaurantIds();
   const [restaurants, setRestaurants] = useState<UIRestaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<"wait" | "distance">("wait");
@@ -85,7 +87,13 @@ export default function CuisinePage() {
     );
   }, [userCoords]);
 
-  const matchingRestaurants = [...restaurants].sort((a, b) => {
+  const matchingRestaurants = [...restaurants]
+    .map((r) =>
+      closedRestaurantIds.has(r.id)
+        ? { ...r, waitStatus: 'darkgrey' as const, waitTime: -1 }
+        : r
+    )
+    .sort((a, b) => {
     if (sortBy === "distance") {
       const da = parseFloat(a.distance) || 9999;
       const db = parseFloat(b.distance) || 9999;
@@ -319,10 +327,10 @@ function CuisineRestaurantCard({
 
         {/* Info */}
         <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
-          {/* Tags */}
-          {restaurant.tags.length > 0 && (
+          {/* Tags – filter out generic "Indian" label */}
+          {restaurant.tags.filter((t) => t.trim().toLowerCase() !== "indian").length > 0 && (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-              {restaurant.tags.slice(0, 3).map((tag) => (
+              {restaurant.tags.filter((t) => t.trim().toLowerCase() !== "indian").slice(0, 3).map((tag) => (
                 <View
                   key={tag}
                   style={{
@@ -367,11 +375,11 @@ function CuisineRestaurantCard({
             {/* Divider */}
             <View style={{ width: 1, height: 12, backgroundColor: "#333" }} />
 
-            {/* Wait time */}
+            {/* Wait time — show "Closed" with grey for darkgrey status */}
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Clock size={12} color={waitColor(restaurant.waitStatus)} />
-              <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: waitColor(restaurant.waitStatus), fontSize: 12, marginLeft: 4 }}>
-                {restaurant.waitTime >= 999 ? "Closed" : restaurant.waitTime < 0 ? "Unknown" : `${restaurant.waitTime}m`}
+              <Clock size={12} color={restaurant.waitStatus === "darkgrey" ? "#666666" : waitColor(restaurant.waitStatus)} />
+              <Text style={{ fontFamily: "JetBrainsMono_600SemiBold", color: restaurant.waitStatus === "darkgrey" ? "#666666" : waitColor(restaurant.waitStatus), fontSize: 12, marginLeft: 4 }}>
+                {restaurant.waitStatus === "darkgrey" ? "Closed" : restaurant.waitTime >= 999 ? "Closed" : restaurant.waitTime < 0 ? "—" : `${restaurant.waitTime}m`}
               </Text>
             </View>
 

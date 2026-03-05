@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   ActivityIndicator,
   ScrollView,
+  Share,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
@@ -469,14 +470,6 @@ export default function RestaurantDetail() {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setJoining(true);
     try {
-      // Ensure the session token is fresh before making an authenticated request
-      const { error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) {
-        // Refresh failed — token is truly invalid; ask user to re-sign-in
-        Alert.alert("Session Expired", "Your session has expired. Please sign out and sign in again.");
-        return;
-      }
-
       const { data, error } = await supabase
         .from("waitlist_entries")
         .insert({
@@ -566,6 +559,19 @@ export default function RestaurantDetail() {
     transform: [{ scale: joinBtnScale.value }],
   }));
 
+  const handleShare = useCallback(async () => {
+    if (!restaurant) return;
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await Share.share({
+        title: restaurant.name,
+        message: `Check out ${restaurant.name} on Rasvia! ${restaurant.address ? `📍 ${restaurant.address}` : ""}`.trim(),
+      });
+    } catch {
+      // user dismissed or share failed — silently ignore
+    }
+  }, [restaurant]);
+
   const isClosed =
     restaurant?.waitStatus === "darkgrey" ||
     hoursStatus?.status === "closed";
@@ -652,7 +658,7 @@ export default function RestaurantDetail() {
                 {restaurant.name}
               </Text>
               <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-                {restaurant.tags.slice(0, 2).map((tag) => (
+                {restaurant.tags.filter((t) => t.trim().toLowerCase() !== "indian").slice(0, 2).map((tag) => (
                   <View
                     key={tag}
                     style={{
@@ -699,6 +705,7 @@ export default function RestaurantDetail() {
                 />
               </Pressable>
               <Pressable
+                onPress={handleShare}
                 style={{
                   width: 34,
                   height: 34,
@@ -812,6 +819,7 @@ export default function RestaurantDetail() {
                     />
                   </Pressable>
                   <Pressable
+                    onPress={handleShare}
                     style={{
                       backgroundColor: "rgba(15, 15, 15, 0.6)",
                       width: 44,
@@ -834,7 +842,7 @@ export default function RestaurantDetail() {
               style={[heroContentStyle, { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: 8 }]}
             >
               <View className="flex-row items-center mb-2">
-                {restaurant.tags.map((tag) => (
+                {restaurant.tags.filter((t) => t.trim().toLowerCase() !== "indian").map((tag) => (
                   <View
                     key={tag}
                     className="rounded-full px-2.5 py-0.5 mr-2"

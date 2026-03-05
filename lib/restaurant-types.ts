@@ -91,6 +91,25 @@ export function haversineDistance(
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// Default images for restaurants that don't have a custom photo.
+// These are curated Unsplash images of Indian food and restaurant settings.
+const DEFAULT_RESTAURANT_IMAGES = [
+    'https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=800&q=80', // Indian curry spread
+    'https://images.unsplash.com/photo-1567337710282-00832b415979?w=800&q=80', // Butter chicken / tikka
+    'https://images.unsplash.com/photo-1596797038530-2c107229654b?w=800&q=80', // Indian thali
+    'https://images.unsplash.com/photo-1574653853027-5382a3d23a15?w=800&q=80', // Biryani
+    'https://images.unsplash.com/photo-1588166524941-3bf61a9c41db?w=800&q=80', // Samosa / street food
+    'https://images.unsplash.com/photo-1505253758473-96b7015fcd40?w=800&q=80', // Dosa / South Indian
+    'https://images.unsplash.com/photo-1548943487-a2e4e43b4853?w=800&q=80', // Tandoori chicken
+    'https://images.unsplash.com/photo-1606491956689-2ea866880c84?w=800&q=80', // Masala dishes
+    'https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=800&q=80', // Indian food table
+    'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80', // Restaurant interior
+];
+
+function getDefaultRestaurantImage(restaurantId: number): string {
+    return DEFAULT_RESTAURANT_IMAGES[restaurantId % DEFAULT_RESTAURANT_IMAGES.length];
+}
+
 /**
  * Map Supabase restaurant data to UI format.
  * Pass userCoords to get live distance calculation.
@@ -151,7 +170,7 @@ export function mapSupabaseToUI(
         waitStatus: getWaitStatus(waitTime),
         capacity: 0,
         partySize: 0,
-        image: restaurant.image_url || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80',
+        image: restaurant.image_url || getDefaultRestaurantImage(restaurant.id),
         priceRange: restaurant.price_range || '$$',
         address: restaurant.address || '',
         description: restaurant.description || '',

@@ -139,7 +139,7 @@ export function AddRestaurantModal({
 
             <TextInput
               style={styles.input}
-              placeholder="Cuisine (e.g., Italian, Burgers)"
+              placeholder="Cuisine (e.g., North Indian, Chaat)"
               placeholderTextColor="#666"
               value={cuisine}
               onChangeText={setCuisine}

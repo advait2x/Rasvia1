@@ -148,38 +148,35 @@ export function FoodDetailModal({
               {item.description}
             </Text>
 
-            {/* Category + Meal Time chips */}
-            <View className="flex-row flex-wrap mb-4" style={{ gap: 6 }}>
-              {item.category && item.category !== "Menu Item" && (
-                <View style={{ backgroundColor: "rgba(255,153,51,0.15)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: "rgba(255,153,51,0.35)" }}>
-                  <Text style={{ fontFamily: "Manrope_700Bold", color: "#FF9933", fontSize: 12, textTransform: "capitalize" }}>
-                    {item.category}
-                  </Text>
+            {/* Meal time chips — colored by period, no category badge */}
+            {item.mealTimes && item.mealTimes.length > 0 && (() => {
+              const MEAL_STYLES: Record<string, { bg: string; border: string; color: string; label: string }> = {
+                breakfast: { bg: "rgba(249,115,22,0.15)", border: "rgba(249,115,22,0.4)",  color: "#F97316", label: "Breakfast" },
+                lunch:     { bg: "rgba(34,197,94,0.15)",  border: "rgba(34,197,94,0.4)",   color: "#22C55E", label: "Lunch" },
+                dinner:    { bg: "rgba(129,140,248,0.15)",border: "rgba(129,140,248,0.4)", color: "#818CF8", label: "Dinner" },
+                all_day:   { bg: "rgba(56,189,248,0.15)", border: "rgba(56,189,248,0.4)",  color: "#38BDF8", label: "All Day" },
+                specials:  { bg: "rgba(245,158,11,0.15)", border: "rgba(245,158,11,0.4)",  color: "#F59E0B", label: "Specials" },
+              };
+              const chips = item.mealTimes
+                .map((mt) => MEAL_STYLES[mt])
+                .filter(Boolean);
+              if (chips.length === 0) return null;
+              return (
+                <View className="flex-row flex-wrap mb-4" style={{ gap: 6 }}>
+                  {item.mealTimes.map((mt, i) => {
+                    const s = MEAL_STYLES[mt];
+                    if (!s) return null;
+                    return (
+                      <View key={i} style={{ backgroundColor: s.bg, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: s.border }}>
+                        <Text style={{ fontFamily: "Manrope_700Bold", color: s.color, fontSize: 12 }}>
+                          {s.label}
+                        </Text>
+                      </View>
+                    );
+                  })}
                 </View>
-              )}
-              {item.mealTimes && item.mealTimes.map((mt, i) => (
-                <View key={i} style={{ backgroundColor: "#2a2a2a", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
-                  <Text style={{ fontFamily: "Manrope_600SemiBold", color: "#bbb", fontSize: 12, textTransform: "capitalize" }}>
-                    {mt}
-                  </Text>
-                </View>
-              ))}
-            </View>
-
-            <View
-              className="self-start px-3 py-1 rounded-full mb-6"
-              style={{ backgroundColor: "#2a2a2a" }}
-            >
-              <Text
-                style={{
-                  fontFamily: "Manrope_600SemiBold",
-                  color: "#999999",
-                  fontSize: 12,
-                }}
-              >
-                {item.category}
-              </Text>
-            </View>
+              );
+            })()}
           </View>
 
           {/* Add to Cart */}
