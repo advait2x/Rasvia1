@@ -1031,7 +1031,7 @@ export default function RestaurantDetail() {
             const todayName = new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'short' });
 
             // Show indicator?
-            const isVegUser = userDietaryType === "Vegetarian" || userDietaryType === "Vegan" || userDietaryType === "Jain";
+            const isVegUser = userDietaryType === "Vegetarian" || userDietaryType === "Halal";
             const isTodayRestrictedDay = userDietaryType === "Non-Veg" && userRestrictedDays.includes(todayName);
             const shouldShow = isVegUser || isTodayRestrictedDay;
 
@@ -1380,6 +1380,10 @@ export default function RestaurantDetail() {
             {/* Dine In */}
             <Pressable
               onPress={() => {
+                if (isRestaurantOwner) {
+                  Alert.alert("Not Available", "Restaurant owners can't place customer orders or join waitlists.");
+                  return;
+                }
                 if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setShowOrderTypePicker(false);
                 // Dine In → join waitlist first
@@ -1387,23 +1391,24 @@ export default function RestaurantDetail() {
                 setShowPartySizePicker(true);
               }}
               style={{
-                backgroundColor: "rgba(255,153,51,0.1)",
+                backgroundColor: isRestaurantOwner ? "#141414" : "rgba(255,153,51,0.1)",
                 borderRadius: 18,
                 padding: 20,
                 marginBottom: 12,
                 flexDirection: "row",
                 alignItems: "center",
                 borderWidth: 1.5,
-                borderColor: "rgba(255,153,51,0.35)",
+                borderColor: isRestaurantOwner ? "#222" : "rgba(255,153,51,0.35)",
+                opacity: isRestaurantOwner ? 0.5 : 1,
               }}
             >
-              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: "rgba(255,153,51,0.15)", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
-                <UtensilsCrossed size={22} color="#FF9933" />
+              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isRestaurantOwner ? "#1a1a1a" : "rgba(255,153,51,0.15)", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
+                <UtensilsCrossed size={22} color={isRestaurantOwner ? "#555" : "#FF9933"} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 18 }}>Dine In</Text>
+                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: isRestaurantOwner ? "#555" : "#f5f5f5", fontSize: 18 }}>Dine In</Text>
                 <Text style={{ fontFamily: "Manrope_500Medium", color: "#777", fontSize: 13, marginTop: 2 }}>
-                  Join the waitlist · {restaurant?.waitTime != null && restaurant.waitTime > 0 ? `${restaurant.waitTime} min wait` : "No wait"}
+                  {isRestaurantOwner ? "Not available for restaurant owners" : `Join the waitlist · ${restaurant?.waitTime != null && restaurant.waitTime > 0 ? `${restaurant.waitTime} min wait` : "No wait"}`}
                 </Text>
               </View>
             </Pressable>
@@ -1411,6 +1416,10 @@ export default function RestaurantDetail() {
             {/* Takeout — Individual */}
             <Pressable
               onPress={() => {
+                if (isRestaurantOwner) {
+                  Alert.alert("Not Available", "Restaurant owners can't place customer orders.");
+                  return;
+                }
                 if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setShowOrderTypePicker(false);
                 setCheckoutOrderType("takeout");
@@ -1418,23 +1427,24 @@ export default function RestaurantDetail() {
                 setShowCheckout(true);
               }}
               style={{
-                backgroundColor: "rgba(20,184,166,0.08)",
+                backgroundColor: isRestaurantOwner ? "#141414" : "rgba(20,184,166,0.08)",
                 borderRadius: 18,
                 padding: 20,
                 marginBottom: 12,
                 flexDirection: "row",
                 alignItems: "center",
                 borderWidth: 1.5,
-                borderColor: "rgba(20,184,166,0.25)",
+                borderColor: isRestaurantOwner ? "#222" : "rgba(20,184,166,0.25)",
+                opacity: isRestaurantOwner ? 0.5 : 1,
               }}
             >
-              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: "rgba(20,184,166,0.12)", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
-                <Truck size={22} color="#14B8A6" />
+              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isRestaurantOwner ? "#1a1a1a" : "rgba(20,184,166,0.12)", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
+                <Truck size={22} color={isRestaurantOwner ? "#555" : "#14B8A6"} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: "#f5f5f5", fontSize: 18 }}>Takeout</Text>
+                <Text style={{ fontFamily: "BricolageGrotesque_700Bold", color: isRestaurantOwner ? "#555" : "#f5f5f5", fontSize: 18 }}>Takeout</Text>
                 <Text style={{ fontFamily: "Manrope_500Medium", color: "#777", fontSize: 13, marginTop: 2 }}>
-                  Pick up your order when ready
+                  {isRestaurantOwner ? "Not available for restaurant owners" : "Pick up your order when ready"}
                 </Text>
               </View>
             </Pressable>
@@ -1442,6 +1452,10 @@ export default function RestaurantDetail() {
             {/* Group Order */}
             <Pressable
               onPress={() => {
+                if (isRestaurantOwner) {
+                  Alert.alert("Not Available", "Restaurant owners can't participate in group orders.");
+                  return;
+                }
                 if (isClosed) {
                   Alert.alert("Restaurant Closed", "Group orders are not available while the restaurant is closed.");
                   return;

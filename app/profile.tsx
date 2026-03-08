@@ -30,8 +30,7 @@ import {
   ArrowLeft,
   Leaf,
   Drumstick,
-  Vegan,
-  Ban,
+  ShieldCheck,
   MapPin,
   Check,
   Sparkles,
@@ -99,8 +98,7 @@ const DFW_CITIES = [
 const DIETARY_OPTIONS = [
   { key: "Vegetarian", label: "Vegetarian", icon: Leaf, color: "#22C55E" },
   { key: "Non-Veg", label: "Non-Veg", icon: Drumstick, color: "#EF4444" },
-  { key: "Vegan", label: "Vegan", icon: Vegan, color: "#10B981" },
-  { key: "Jain", label: "Jain", icon: Ban, color: "#F59E0B" },
+  { key: "Halal", label: "Halal", icon: ShieldCheck, color: "#60A5FA" },
 ];
 
 const DAYS = [

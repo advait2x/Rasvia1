@@ -629,7 +629,7 @@ export default function DiscoveryFeed() {
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}
           >
             {restaurantsWithHoursStatus
-              .filter((r) => (isAdmin || r.isEnabled) && r.waitStatus === "green")
+              .filter((r) => (isAdmin || r.isEnabled) && r.waitStatus === "green" && !closedRestaurantIds.has(r.id))
               .map((restaurant, index) => (
                 <RestaurantListCard
                   key={restaurant.id}

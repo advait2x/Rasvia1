@@ -15,8 +15,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import {
     Leaf,
     Drumstick,
-    Vegan,
-    Ban,
+    ShieldCheck,
     MapPin,
     ChevronDown,
     Check,
@@ -65,8 +64,7 @@ const DFW_CITIES = [
 const DIETARY_OPTIONS = [
     { key: "Vegetarian", label: "Vegetarian", icon: Leaf, color: "#22C55E", desc: "No meat, no eggs" },
     { key: "Non-Veg", label: "Non-Veg", icon: Drumstick, color: "#EF4444", desc: "I eat everything" },
-    { key: "Vegan", label: "Vegan", icon: Vegan, color: "#10B981", desc: "Plant-based only" },
-    { key: "Jain", label: "Jain", icon: Ban, color: "#F59E0B", desc: "No root vegetables" },
+    { key: "Halal", label: "Halal", icon: ShieldCheck, color: "#60A5FA", desc: "Halal certified only" },
 ];
 
 const DAYS = [
