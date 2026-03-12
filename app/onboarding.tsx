@@ -109,7 +109,7 @@ export default function OnboardingScreen() {
     // SAVE TO SUPABASE
     // ==========================================
     const handleFinish = useCallback(async () => {
-        if (saving) return; // guard against double-tap
+        if (saving) return;
         if (!session?.user?.id) return;
 
         setSaving(true);
@@ -118,37 +118,31 @@ export default function OnboardingScreen() {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
 
-            const profileData = {
-                location_city: city,
-                dietary_type: dietaryType,
-                restricted_days: restrictedDays,
-                spice_level: "Medium",
-                onboarding_completed: true,
-                updated_at: new Date().toISOString(),
-            };
-
-            // Try UPDATE first (works when row already exists)
-            const { error: updateError, count } = await supabase
+            // Always upsert so onboarding_completed is guaranteed to be written,
+            // even if the profile row doesn't exist yet or the previous write failed.
+            const { error } = await supabase
                 .from("profiles")
-                .update(profileData)
-                .eq("id", session.user.id);
+                .upsert(
+                    {
+                        id: session.user.id,
+                        location_city: city,
+                        dietary_type: dietaryType,
+                        restricted_days: restrictedDays,
+                        spice_level: "Medium",
+                        onboarding_completed: true,
+                        updated_at: new Date().toISOString(),
+                    },
+                    { onConflict: "id" }
+                );
 
-            if (updateError) {
-                // Fallback: try UPSERT
-                const { error: upsertError } = await supabase.from("profiles").upsert({
-                    id: session.user.id,
-                    ...profileData,
-                });
-
-                if (upsertError) {
-                    console.error("❌ Profile save error:", upsertError);
-                    Alert.alert(
-                        "Setup Error",
-                        "Could not save your preferences. Please make sure the database migration has been run.\n\nError: " + upsertError.message
-                    );
-                    setSaving(false);
-                    return;
-                }
+            if (error) {
+                console.error("❌ Profile save error:", error);
+                Alert.alert(
+                    "Setup Error",
+                    "Could not save your preferences.\n\nError: " + error.message
+                );
+                setSaving(false);
+                return;
             }
 
             setNeedsOnboarding(false);

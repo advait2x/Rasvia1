@@ -7,6 +7,7 @@ import {
     Alert,
     Platform,
     KeyboardAvoidingView,
+    ScrollView,
     ActivityIndicator,
     Dimensions,
     Image,
@@ -183,9 +184,16 @@ export default function AuthScreen() {
 
             <SafeAreaView className="flex-1" edges={["top"]}>
                 <KeyboardAvoidingView
-                    behavior={Platform.OS === "ios" ? "padding" : "height"}
-                    className="flex-1 justify-end"
+                    behavior="padding"
+                    style={{ flex: 1 }}
+                    keyboardVerticalOffset={Platform.OS === "android" ? 0 : 0}
                 >
+                    <ScrollView
+                        contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end" }}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={false}
+                        bounces={false}
+                    >
                     {/* Header Logo */}
                     <Animated.View
                         entering={FadeIn.duration(800)}
@@ -664,6 +672,7 @@ export default function AuthScreen() {
                             </Text>
                         </Pressable>
                     </Animated.View>
+                    </ScrollView>
                 </KeyboardAvoidingView>
             </SafeAreaView>
         </View>

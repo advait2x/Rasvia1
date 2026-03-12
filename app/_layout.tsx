@@ -6,7 +6,13 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { View, ActivityIndicator, Platform, Alert } from "react-native";
+import { View, ActivityIndicator, Platform, Alert, LogBox } from "react-native";
+
+// Remote push token registration is unavailable in Expo Go SDK 53+.
+// Rasvia only uses local (scheduled) notifications so this is harmless.
+LogBox.ignoreLogs([
+  "expo-notifications: Android Push notifications (remote notifications)",
+]);
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
@@ -283,14 +289,14 @@ export default function RootLayout() {
 
   if (!fontsLoaded) {
     return (
-      <View className="flex-1 bg-rasvia-black items-center justify-center">
+      <View style={{ flex: 1, backgroundColor: "#0f0f0f", alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator size="large" color="#FF9933" />
       </View>
     );
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#0f0f0f" }}>
       <SafeAreaProvider>
         <ThemeProvider value={rasviaTheme}>
           <StatusBar style="light" />
