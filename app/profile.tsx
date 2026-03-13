@@ -1694,125 +1694,7 @@ export default function ProfileSettingsScreen() {
             </Animated.View>
           )}
 
-          {/* Settings List — always shown */}
-          {(!isAdmin || activeTab === 'preferences') && (
-            <Animated.View
-              entering={FadeInDown.delay(220).duration(500)}
-              className="mx-5 mb-8"
-              style={{
-                backgroundColor: "#1a1a1a",
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: "#2a2a2a",
-                overflow: "hidden",
-              }}
-            >
-              <SettingsRow
-                icon={<ShoppingBag size={20} color="#FF9933" />}
-                label="My Orders"
-                hasChevron
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                  router.push("/my-orders" as any);
-                }}
-              />
-              <Divider />
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingHorizontal: 20,
-                  paddingVertical: 16,
-                }}
-              >
-                <View
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 12,
-                    backgroundColor: "rgba(255, 153, 51, 0.12)",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginRight: 14,
-                  }}
-                >
-                  <Bell size={20} color="#FF9933" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_600SemiBold",
-                      color: "#f5f5f5",
-                      fontSize: 15,
-                    }}
-                  >
-                    Notifications
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "Manrope_500Medium",
-                      color: notificationsEnabled ? "#22C55E" : "#EF4444",
-                      fontSize: 11,
-                      marginTop: 2,
-                    }}
-                  >
-                    {notificationsEnabled ? "Active" : "Inactive"}
-                  </Text>
-                </View>
-                <Switch
-                  value={notificationsEnabled}
-                  onValueChange={async (val) => {
-                    if (Platform.OS !== "web") Haptics.selectionAsync();
-                    if (val) {
-                      const granted = await enablePushNotifications();
-                      setNotificationsEnabled(granted);
-                      if (!granted) {
-                        Alert.alert(
-                          "Notifications Blocked",
-                          "Please enable notifications in your device Settings.",
-                        );
-                      }
-                    } else {
-                      await disablePushNotifications();
-                      setNotificationsEnabled(false);
-                    }
-                  }}
-                  trackColor={{ false: "#333333", true: "rgba(255,153,51,0.4)" }}
-                  thumbColor={notificationsEnabled ? "#FF9933" : "#666666"}
-                />
-              </View>
-              <Divider />
-              <SettingsRow
-                icon={<Heart size={20} color="#EF4444" />}
-                label="Favorites"
-                hasChevron
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                  router.push("/favorites" as any);
-                }}
-              />
-              <Divider />
-              <SettingsRow
-                icon={<Shield size={20} color="#888888" />}
-                label="Privacy Policy"
-                hasChevron
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                  router.push("/privacy" as any);
-                }}
-              />
-              <Divider />
-              <SettingsRow
-                icon={<FileText size={20} color="#888888" />}
-                label="Terms of Service"
-                hasChevron
-                onPress={() => {
-                  if (Platform.OS !== "web") Haptics.selectionAsync();
-                  router.push("/terms" as any);
-                }}
-              />
-            </Animated.View>
-          )}
+
 
 
           {/* ==========================================
@@ -2088,7 +1970,7 @@ export default function ProfileSettingsScreen() {
           {/* ==========================================
                       DANGER ZONE — Delete Account
               ========================================== */}
-          {(!isAdmin || activeTab === 'preferences') && (
+          {(!isAdmin && !isRestaurantOwner) && (
             <Animated.View
               entering={FadeInDown.delay(300).duration(500)}
               className="mx-5 mb-8"

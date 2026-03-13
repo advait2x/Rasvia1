@@ -906,21 +906,34 @@ export default function MapScreen() {
                   if (Platform.OS !== "web") {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   }
-                  const camera = await mapRef.current?.getCamera();
-                  const lat = camera?.center?.latitude ?? mapCenter.latitude;
-                  const lng = camera?.center?.longitude ?? mapCenter.longitude;
+                  let lat: number;
+                  let lng: number;
+                  try {
+                    const camera = await mapRef.current?.getCamera();
+                    lat = camera?.center?.latitude ?? mapCenter.latitude;
+                    lng = camera?.center?.longitude ?? mapCenter.longitude;
+                  } catch {
+                    lat = mapCenter.latitude;
+                    lng = mapCenter.longitude;
+                  }
+
+                  if (!lat || !lng) {
+                    Alert.alert("Error", "Could not determine map center coordinates. Please try again.");
+                    return;
+                  }
+
                   if (restaurantBeingMoved) {
                     try {
                       const { error } = await supabase
                         .from("restaurants")
                         .update({ lat, long: lng })
-                        .eq("id", restaurantBeingMoved.id);
+                        .eq("id", Number(restaurantBeingMoved.id));
                       if (error) throw error;
+                      setIsSettingLocation(false);
+                      setRestaurantBeingMoved(null);
                     } catch (err: any) {
                       Alert.alert("Error", err.message || "Failed to update location.");
                     }
-                    setIsSettingLocation(false);
-                    setRestaurantBeingMoved(null);
                   } else {
                     setIsSettingLocation(false);
                     setNewRestCoords({ lat, lng });
@@ -1760,7 +1773,7 @@ function MapSearchOverlay({
   const [sortBy, setSortBy] = useState<SortOption>("none");
   const inputRef = useRef<TextInput>(null);
 
-  const parseDistance = (d: string) => parseFloat(d.replace(/[^0-9.]/g, "")) || 0;
+  const parseDistance = (d: string | undefined) => parseFloat((d ?? "").replace(/[^0-9.]/g, "")) || Infinity;
 
   useEffect(() => {
     const timer = setTimeout(() => inputRef.current?.focus(), 300);

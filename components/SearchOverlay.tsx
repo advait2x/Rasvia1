@@ -78,8 +78,8 @@ function searchTrie(root: TrieNode, query: string): Set<string> {
   return node.restaurantIds;
 }
 
-function parseDistance(d: string): number {
-  return parseFloat(d.replace(/[^0-9.]/g, "")) || 0;
+function parseDistance(d: string | undefined): number {
+  return parseFloat((d ?? "").replace(/[^0-9.]/g, "")) || Infinity;
 }
 
 type SortOption = "none" | "waitTime" | "distance";
